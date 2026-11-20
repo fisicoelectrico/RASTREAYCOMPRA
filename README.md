@@ -134,6 +134,23 @@ Las pruebas (`conectores_test.ts`) cubren justo esto: que las MSI Ventus de Merc
 queden juntas, que la Ti, los portátiles y el soporte vayan aparte, que 8 GB y 16 GB no se mezclen
 y que la clave no cambie con el orden de llegada.
 
+### Seguir el modelo (vendedores nuevos)
+
+Al rastrear no se guarda solo la publicación exacta: se guarda **el modelo** (`clave_modelo`, la
+consulta y el filtro nueva/usada). En cada revisión de 6 h, `revisar-precios` repite la búsqueda
+guardada (una vez por consulta, aunque varios modelos la compartan), reagrupa y busca "el mismo
+grupo" con `encontrarGrupo()`, en este orden de confianza:
+
+1. Un grupo que contenga un producto de catálogo de MercadoLibre ya visto (`ids_catalogo`): exacto.
+2. La misma clave.
+3. La clave más parecida (Jaccard ≥ 0,6), **con la misma marca y sin números en conflicto**.
+
+Candados (poka-yoke) para que no entre basura: nunca un grupo marcado como ruido, se respeta el
+filtro nueva/usada, nunca vuelve lo que el usuario quitó con × (`ids_descartados`) y como máximo
+entran 10 ofertas nuevas por modelo y revisión (las más baratas). Las que entran así quedan con
+`descubierta = true` y la app las marca "Nueva oferta encontrada". El interruptor "Buscar vendedores
+nuevos de este modelo" (`seguir_modelo`) apaga todo esto para ese modelo.
+
 ## 4. Precio final
 
 Decisión: **el precio que se muestra es siempre el precio final**.
@@ -200,7 +217,7 @@ Sin variables de entorno la app abre en **modo demo**: usa respuestas grabadas d
 ### Pruebas del backend
 
 ```bash
-deno test --allow-read supabase/functions/_shared     # 13 pruebas: conectores y agrupación (sin internet)
+deno test --allow-read supabase/functions/_shared     # 17 pruebas: conectores, agrupación, seguir el modelo y token ML (sin internet)
 ```
 
 Para la prueba de RLS en un PostgreSQL local:
@@ -214,14 +231,27 @@ psql -d prueba -f supabase/tests/prueba_rls.sql
 ## 8. Despliegue
 
 **Desplegado el 2026-11-20 en el proyecto Supabase "organizado"** (`iobwejsklryixkzotpyh`):
-las 3 migraciones, las funciones `buscar` y `revisar-precios`, el cron cada 6 h y los dos
+las 5 migraciones, las funciones `buscar`, `revisar-precios` y `ml-autorizar`, el cron cada 6 h y los dos
 secretos de Vault (`project_url`, `cron_secret`). La app ya trae la URL y la publishable key en
 `app/.env.production`, así que `npm run build` genera una versión conectada a ese proyecto.
 
 Pendiente para que MercadoLibre funcione: su API responde **403** a llamadas sin token (comprobado
-desde Supabase). Crea una app gratuita en developers.mercadolibre.com.co y guarda sus credenciales
-como secretos de las Edge Functions (Dashboard → Edge Functions → Secrets):
-`ML_CLIENT_ID` y `ML_CLIENT_SECRET`. El conector pide el token de aplicación y lo renueva solo.
+desde Supabase). Se usa OAuth de MercadoLibre (`authorization_code` + `refresh_token`):
+
+1. Crea una app en developers.mercadolibre.com.co → DevCenter → "Crear aplicación".
+   - **URI de redirect:** `https://iobwejsklryixkzotpyh.supabase.co/functions/v1/ml-autorizar`
+   - PKCE: desactivado. Permisos: solo lectura basta.
+2. Guarda el *App ID* y la *Clave secreta* como secretos de las Edge Functions
+   (Dashboard → Edge Functions → Secrets): `ML_CLIENT_ID` y `ML_CLIENT_SECRET`.
+   Nunca en el repositorio ni en un chat.
+3. Abre una vez `https://iobwejsklryixkzotpyh.supabase.co/functions/v1/ml-autorizar` y pulsa
+   "Autorizar" con tu cuenta de MercadoLibre.
+
+Desde ahí el token vive en la tabla `ml_credenciales` (una sola fila, sin acceso desde la app, solo
+service role) y `_shared/ml_token.ts` lo renueva solo 5 min antes de que venza. El `refresh_token`
+de MercadoLibre es de un solo uso, así que se guarda con `update ... where refresh_token = anterior`:
+si dos funciones renuevan a la vez, la segunda relee el que guardó la primera. La primera cuenta que
+autoriza queda fijada (otra cuenta recibe 409).
 
 Para desplegar en otro proyecto:
 
@@ -230,6 +260,7 @@ supabase link --project-ref <ref>
 supabase db push
 supabase functions deploy buscar
 supabase functions deploy revisar-precios --no-verify-jwt
+supabase functions deploy ml-autorizar --no-verify-jwt
 ```
 
 y una sola vez en el SQL Editor:

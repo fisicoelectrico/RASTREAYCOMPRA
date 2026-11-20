@@ -7,10 +7,13 @@
 //   - guarda una fila en historial_precios,
 //   - actualiza el precio actual en ofertas.
 // Si una oferta no aparece 3 revisiones seguidas, queda como no disponible.
-import { createClient } from "npm:@supabase/supabase-js@2";
+// Después, para cada modelo con "seguir modelo" activo, repite la búsqueda guardada
+// y suma los vendedores nuevos del mismo grupo (ver descubrir()).
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { agrupar, encontrarGrupo, ofertasNuevas } from "../_shared/agrupar.ts";
 import { conectoresActivos, conTiempoLimite } from "../_shared/conectores.ts";
 import { CORS, error, json } from "../_shared/http.ts";
-import type { Revision } from "../_shared/tipos.ts";
+import type { FiltroCondicion, Grupo, Oferta, Revision } from "../_shared/tipos.ts";
 
 interface FilaOferta {
   id: string;
@@ -52,7 +55,7 @@ Deno.serve(async (req) => {
   const ahora = new Date().toISOString();
   const resumen = { revisadas: 0, cambiaron: 0, sin_respuesta: 0, errores: [] as string[] };
 
-  for (const c of conectoresActivos()) {
+  for (const c of conectoresActivos(admin)) {
     const suyas = (filas as FilaOferta[]).filter((f) => f.conector === c.id);
     if (!suyas.length) continue;
 
@@ -103,5 +106,96 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ origen: soloUsuario ? "usuario" : "pg_cron", ...resumen });
+  const descubiertas = await descubrir(admin, soloUsuario, resumen.errores);
+
+  return json({ origen: soloUsuario ? "usuario" : "pg_cron", ...resumen, descubiertas });
 });
+
+interface FilaVigilado {
+  id: string;
+  user_id: string;
+  clave_modelo: string;
+  consulta: string;
+  filtro: FiltroCondicion;
+  ids_catalogo: string[];
+  ids_descartados: string[];
+  ofertas: { conector: string; id_externo: string }[];
+}
+
+/**
+ * Seguir el modelo: repite cada búsqueda guardada (una sola vez por consulta+filtro aunque
+ * varios modelos la compartan), reagrupa y suma las ofertas nuevas del mismo grupo.
+ * Candados: solo grupos que no son ruido, mismo filtro nueva/usada, nunca lo que el usuario
+ * descartó, y como máximo 10 ofertas nuevas por modelo y por revisión.
+ */
+async function descubrir(admin: SupabaseClient, soloUsuario: string | null, errores: string[]): Promise<number> {
+  let q = admin
+    .from("vigilados")
+    .select("id, user_id, clave_modelo, consulta, filtro, ids_catalogo, ids_descartados, ofertas(conector, id_externo)")
+    .eq("activo", true)
+    .eq("seguir_modelo", true)
+    .not("consulta", "is", null);
+  if (soloUsuario) q = q.eq("user_id", soloUsuario);
+  const { data, error: e } = await q;
+  if (e) {
+    errores.push(`descubrir: ${e.message}`);
+    return 0;
+  }
+  const vigilados = (data ?? []) as FilaVigilado[];
+
+  // Una búsqueda por consulta+filtro.
+  const busquedas = new Map<string, { consulta: string; filtro: FiltroCondicion }>();
+  for (const v of vigilados) {
+    busquedas.set(`${v.consulta.toLowerCase()}|${v.filtro}`, { consulta: v.consulta, filtro: v.filtro });
+  }
+
+  const resultados = new Map<string, Grupo[]>();
+  const conectores = conectoresActivos(admin);
+  for (const [k, b] of busquedas) {
+    const r = await Promise.allSettled(
+      conectores.map((c) => conTiempoLimite(c.buscar(b.consulta, b.filtro), 12_000, c.tienda)),
+    );
+    const ofertas: Oferta[] = r.flatMap((x) => (x.status === "fulfilled" ? x.value : []));
+    resultados.set(k, agrupar(ofertas, b.consulta));
+  }
+
+  let total = 0;
+  for (const v of vigilados) {
+    const grupos = resultados.get(`${v.consulta.toLowerCase()}|${v.filtro}`) ?? [];
+    const g = encontrarGrupo(grupos, v.clave_modelo, v.ids_catalogo);
+    if (!g) continue;
+    const seguidas = new Set(v.ofertas.map((o) => `${o.conector}:${o.id_externo}`));
+    const nuevas = ofertasNuevas(g, seguidas, new Set(v.ids_descartados), v.filtro);
+    if (nuevas.length) {
+      const { error: errIns } = await admin.from("ofertas").upsert(
+        nuevas.map((o) => ({
+          vigilado_id: v.id,
+          user_id: v.user_id,
+          tienda: o.tienda,
+          conector: o.conector,
+          id_externo: o.idExterno,
+          titulo: o.titulo,
+          url: o.url,
+          vendedor: o.vendedor,
+          condicion: o.condicion,
+          precio: o.precio,
+          envio: o.envio,
+          precio_final: o.precioFinal,
+          disponible: o.disponible,
+          descubierta: true,
+        })),
+        { onConflict: "vigilado_id,conector,id_externo", ignoreDuplicates: true },
+      );
+      if (errIns) errores.push(`descubrir ${v.id}: ${errIns.message}`);
+      else total += nuevas.length;
+    }
+    // Recordar los productos de catálogo de MercadoLibre del grupo: la próxima vez la coincidencia es exacta.
+    const catalogo = [
+      ...new Set([...v.ids_catalogo, ...g.ofertas.map((o) => o.idCatalogo).filter((x): x is string => !!x)]),
+    ];
+    if (catalogo.length !== v.ids_catalogo.length) {
+      await admin.from("vigilados").update({ ids_catalogo: catalogo }).eq("id", v.id);
+    }
+  }
+  return total;
+}

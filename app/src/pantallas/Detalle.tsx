@@ -1,6 +1,6 @@
 // Pantalla 4: historial por tienda, mínimo histórico, objetivo y ofertas que se siguen.
 import { useState } from "react";
-import type { Vigilado } from "../api/index.ts";
+import type { OfertaVigilada, Vigilado } from "../api/index.ts";
 import { GraficoHistorial } from "../componentes/Grafico.tsx";
 import { IcAtras } from "../componentes/Iconos.tsx";
 import { colorTienda, fmt, mejorOferta, pct, serieMejor, variacion } from "../util.ts";
@@ -9,10 +9,12 @@ interface Props {
   v: Vigilado;
   volver: () => void;
   cambiarObjetivo: (p: number) => Promise<void>;
+  cambiarSeguimiento: (seguir: boolean) => Promise<void>;
+  quitarOferta: (o: OfertaVigilada) => Promise<void>;
   dejar: () => Promise<void>;
 }
 
-export function Detalle({ v, volver, cambiarObjetivo, dejar }: Props) {
+export function Detalle({ v, volver, cambiarObjetivo, cambiarSeguimiento, quitarOferta, dejar }: Props) {
   const [dias, setDias] = useState(30);
   const [ocultas, setOcultas] = useState<Set<string>>(new Set());
   const [editando, setEditando] = useState(false);
@@ -100,6 +102,21 @@ export function Detalle({ v, volver, cambiarObjetivo, dejar }: Props) {
             )}
         </div>
 
+        <div className="card" style={{ display: "grid", gap: 6 }}>
+          <div className="row">
+            <span>
+              Buscar vendedores nuevos de este modelo
+              <small>Cada 6 h repetimos tu búsqueda y sumamos ofertas nuevas del mismo modelo</small>
+            </span>
+            <button
+              className={`toggle ${v.seguirModelo ? "on" : ""}`}
+              aria-label="Seguir el modelo completo"
+              aria-pressed={v.seguirModelo}
+              onClick={() => cambiarSeguimiento(!v.seguirModelo)}
+            />
+          </div>
+        </div>
+
         <div className="card">
           <h4>Ofertas que sigues</h4>
           <div className="olist">
@@ -110,11 +127,17 @@ export function Detalle({ v, volver, cambiarObjetivo, dejar }: Props) {
                     <span className="dot" style={{ background: colorTienda(o.tienda) }} />{o.tienda}
                     {o.condicion === "usada" && <span className="pill usada">Usada</span>}
                     {!o.disponible && <span className="pill">Agotado</span>}
+                    {o.descubierta && <span className="pill nueva-oferta">Nueva oferta encontrada</span>}
                   </span>
                   <small title={o.titulo}>{o.envio === 0 ? "Envío gratis · " : o.envio === null ? "Envío por calcular · " : ""}{o.titulo}</small>
                 </span>
                 <b className="num">{fmt(o.precioFinal)}</b>
-                <a href={o.url} target="_blank" rel="noopener noreferrer">Ver ›</a>
+                <span className="row-acc">
+                  <a href={o.url} target="_blank" rel="noopener noreferrer">Ver ›</a>
+                  {v.ofertas.length > 1 && (
+                    <button className="quitar" aria-label={`Quitar oferta de ${o.tienda}`} title="Quitar (no volverá a sumarse)" onClick={() => quitarOferta(o)}>×</button>
+                  )}
+                </span>
               </div>
             ))}
           </div>

@@ -107,6 +107,15 @@ export function App() {
                 await api.cambiarObjetivo(v.id, p);
                 await recargar();
               }}
+              cambiarSeguimiento={async (seguir) => {
+                await api.cambiarSeguimiento(v.id, seguir);
+                await recargar();
+              }}
+              quitarOferta={async (o) => {
+                await api.quitarOferta(v.id, o);
+                await recargar();
+                avisar(`Quitamos la oferta de ${o.tienda}; no volverá a sumarse`);
+              }}
               dejar={async () => {
                 await api.dejarDeRastrear(v.id);
                 await recargar();

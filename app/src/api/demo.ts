@@ -98,9 +98,12 @@ export function crearApiDemo(): Api {
         nombre: grupo.nombre,
         imagen: grupo.imagen,
         precioObjetivo,
+        seguirModelo: true,
         ultimaRevision: new Date(Date.now() - 38 * 60e3).toISOString(),
         ofertas: ofertas.map((o, i) => ({
           id: `${o.conector}:${o.idExterno}`,
+          clave: `${o.conector}:${o.idExterno}`,
+          descubierta: false,
           tienda: o.tienda,
           titulo: o.titulo,
           url: o.url,
@@ -126,6 +129,16 @@ export function crearApiDemo(): Api {
     },
     async dejarDeRastrear(id) {
       estado.vigilados = estado.vigilados.filter((v) => v.id !== id);
+      guardar(estado);
+    },
+    async cambiarSeguimiento(id, seguir) {
+      estado.vigilados = estado.vigilados.map((v) => (v.id === id ? { ...v, seguirModelo: seguir } : v));
+      guardar(estado);
+    },
+    async quitarOferta(vigiladoId, oferta) {
+      estado.vigilados = estado.vigilados.map((v) =>
+        v.id === vigiladoId ? { ...v, ofertas: v.ofertas.filter((o) => o.id !== oferta.id) } : v
+      );
       guardar(estado);
     },
     async revisarAhora() {

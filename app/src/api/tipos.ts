@@ -10,6 +10,8 @@ export interface PuntoHistorial {
 
 export interface OfertaVigilada {
   id: string;
+  clave: string; // "conector:idExterno", para descartarla sin que vuelva a aparecer
+  descubierta: boolean; // la encontró la app sola (seguir modelo)
   tienda: string;
   titulo: string;
   url: string;
@@ -27,6 +29,7 @@ export interface Vigilado {
   nombre: string;
   imagen: string | null;
   precioObjetivo: number;
+  seguirModelo: boolean;
   ofertas: OfertaVigilada[];
   ultimaRevision: string | null;
 }
@@ -38,9 +41,12 @@ export interface Api {
   salir(): Promise<void>;
   buscar(consulta: string, filtro: FiltroCondicion): Promise<ResultadoBusqueda>;
   recientes(): Promise<string[]>;
-  rastrear(grupo: Grupo, ofertas: Oferta[], precioObjetivo: number, consulta: string): Promise<void>;
+  rastrear(grupo: Grupo, ofertas: Oferta[], precioObjetivo: number, consulta: string, filtro: FiltroCondicion): Promise<void>;
   vigilados(): Promise<Vigilado[]>;
   cambiarObjetivo(id: string, precio: number): Promise<void>;
   dejarDeRastrear(id: string): Promise<void>;
+  cambiarSeguimiento(id: string, seguir: boolean): Promise<void>;
+  /** Quita una oferta y la recuerda como descartada para que "seguir modelo" no la vuelva a sumar. */
+  quitarOferta(vigiladoId: string, oferta: OfertaVigilada): Promise<void>;
   revisarAhora(): Promise<{ revisadas: number; cambiaron: number }>;
 }

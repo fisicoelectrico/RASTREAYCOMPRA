@@ -34,7 +34,9 @@ Deno.serve(async (req) => {
   const filtro = (FILTROS.includes(cuerpo.filtro as FiltroCondicion) ? cuerpo.filtro : "ambas") as FiltroCondicion;
   if (consulta.length < 2 || consulta.length > 120) return error("Escribe entre 2 y 120 caracteres");
 
-  const conectores = conectoresActivos();
+  // Cliente de servicio: solo para leer/renovar el token de MercadoLibre.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const conectores = conectoresActivos(admin);
   const respuestas = await Promise.allSettled(
     conectores.map((c) => conTiempoLimite(c.buscar(consulta, filtro), 12_000, c.tienda)),
   );

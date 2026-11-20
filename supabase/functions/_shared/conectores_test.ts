@@ -158,3 +158,97 @@ Deno.test("Éxito real (respuesta capturada desde Supabase): portátiles aparte,
   ]);
   assert(grupos.filter((g) => g.ruido).every((g) => g.ruido === "Es un equipo completo que incluye ese componente"));
 });
+
+Deno.test("seguir modelo: reencuentra el grupo aunque cambie la clave y suma solo vendedores nuevos", async () => {
+  const { encontrarGrupo, ofertasNuevas } = await import("./agrupar.ts");
+  const hoy = agrupar([...ofertasML, ...ofertasExito], "rtx 5060");
+  const msi = hoy.find((g) => g.marca === "msi" && !g.ruido)!;
+
+  // Mañana aparece otro vendedor de la misma MSI Ventus, más barato, con otro título.
+  const nuevo: Oferta = {
+    ...ofertasML[0],
+    idExterno: "MCO1500000099",
+    idCatalogo: null,
+    titulo: "Msi Ventus 2x Oc Rtx 5060 8gb Gddr7 Nueva Sellada",
+    precio: 1599000,
+    precioFinal: 1599000,
+    vendedor: "NUEVOVENDEDOR",
+  };
+  const manana = agrupar([...ofertasML, ...ofertasExito, nuevo], "rtx 5060");
+  const g = encontrarGrupo(manana, msi.clave)!;
+  assert(g, "encuentra el grupo");
+  assert(g.ofertas.some((o) => o.idExterno === "MCO1500000099"));
+
+  const seguidas = new Set(msi.ofertas.slice(0, 2).map((o) => `${o.conector}:${o.idExterno}`));
+  const descartadas = new Set([`mercadolibre:MCO1500000008`]);
+  const nuevas = ofertasNuevas(g, seguidas, descartadas, "nueva");
+  assertEquals(nuevas[0].idExterno, "MCO1500000099", "la más barata primero");
+  assert(!nuevas.some((o) => o.idExterno === "MCO1500000008"), "respeta las descartadas");
+  assert(nuevas.every((o) => o.condicion === "nueva"), "respeta el filtro");
+});
+
+Deno.test("seguir modelo: nunca confunde la MSI con la Gigabyte ni con la Ti", async () => {
+  const { encontrarGrupo } = await import("./agrupar.ts");
+  const grupos = agrupar([...ofertasML, ...ofertasExito], "rtx 5060");
+  const giga = grupos.find((g) => g.marca === "gigabyte")!;
+  const sinGiga = grupos.filter((g) => g !== giga);
+  assertEquals(encontrarGrupo(sinGiga, giga.clave), null, "si el modelo no aparece, no inventa otro");
+  const porCatalogo = encontrarGrupo(grupos, "x|y", ["MCO40000001"]);
+  assertEquals(porCatalogo?.marca, "msi", "el catálogo de MercadoLibre es coincidencia exacta");
+});
+
+Deno.test("token MercadoLibre: renueva antes de vencer, guarda el refresh nuevo y sobrevive a una carrera", async () => {
+  const { proveedorTokenML } = await import("./ml_token.ts");
+  let guardado = { mlUserId: 7, accessToken: "VIEJO", refreshToken: "TG-1", venceEn: Date.now() + 60_000 }; // vence en 1 min
+  const almacen = {
+    leer: () => Promise.resolve({ ...guardado }),
+    reemplazar: (n: typeof guardado, ant: string | null) => {
+      if (ant !== guardado.refreshToken) return Promise.resolve(false);
+      guardado = n;
+      return Promise.resolve(true);
+    },
+  };
+  const usados: string[] = [];
+  const falso = ((_u: string, init: RequestInit) => {
+    const rt = new URLSearchParams(init.body as URLSearchParams).get("refresh_token")!;
+    usados.push(rt);
+    if (rt !== guardado.refreshToken) {
+      return Promise.resolve(new Response('{"error":"invalid_grant"}', { status: 400 }));
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ access_token: "NUEVO", refresh_token: "TG-2", expires_in: 21600, user_id: 7 })),
+    );
+  }) as unknown as typeof fetch;
+
+  const t = proveedorTokenML(almacen, { clientId: "a", clientSecret: "b", fetch: falso });
+  assertEquals(await t(), "NUEVO", "faltando menos de 5 min, renueva");
+  assertEquals(guardado.refreshToken, "TG-2", "guarda el refresh_token nuevo (uso único)");
+  assertEquals(await t(), "NUEVO", "segunda llamada sale de caché");
+  assertEquals(usados, ["TG-1"]);
+
+  // Carrera: otra instancia con el refresh viejo en memoria. MercadoLibre la rechaza y relee el bueno.
+  const otra = proveedorTokenML({
+    ...almacen,
+    leer: (() => {
+      let primera = true;
+      return () =>
+        Promise.resolve(
+          primera ? (primera = false, { ...guardado, refreshToken: "TG-1", venceEn: 0 }) : { ...guardado },
+        );
+    })(),
+  }, { clientId: "a", clientSecret: "b", fetch: falso });
+  assertEquals(await otra(), "NUEVO");
+});
+
+Deno.test("token MercadoLibre: sin autorizar devuelve null y el conector va sin cabecera", async () => {
+  const { proveedorTokenML } = await import("./ml_token.ts");
+  const t = proveedorTokenML({ leer: () => Promise.resolve(null), reemplazar: () => Promise.resolve(false) }, {});
+  assertEquals(await t(), null);
+  let auth: string | null = "x";
+  const falso = ((_u: string, init: RequestInit) => {
+    auth = new Headers(init.headers).get("Authorization");
+    return Promise.resolve(new Response(JSON.stringify(ml)));
+  }) as unknown as typeof fetch;
+  await crearConectorML({ token: t, fetch: falso }).buscar("rtx 5060", "ambas");
+  assertEquals(auth, null);
+});

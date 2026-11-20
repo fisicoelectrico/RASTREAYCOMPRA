@@ -326,3 +326,85 @@ export function agrupar(ofertas: Oferta[], consulta: string): Grupo[] {
     Number(!!a.ruido) - Number(!!b.ruido) || b.ofertas.length - a.ofertas.length || minimo(a) - minimo(b)
   );
 }
+
+// ---------------------------------------------------------------------------
+// Seguir el modelo: reencontrar "el mismo grupo" en una búsqueda nueva.
+// ---------------------------------------------------------------------------
+
+/** Similitud mínima entre claves para considerar que dos grupos son el mismo modelo. */
+export const UMBRAL_MISMO_GRUPO = 0.6;
+
+const partesClave = (clave: string) => {
+  const [marca, resto = ""] = clave.split("|");
+  return { marca, tokens: new Set(resto.split(" ").filter(Boolean)) };
+};
+
+/**
+ * Busca, entre los grupos de una búsqueda nueva, el que corresponde a un modelo vigilado.
+ * Orden de confianza:
+ *   1. Un grupo que contenga un producto de catálogo de MercadoLibre ya conocido (exacto).
+ *   2. La misma clave.
+ *   3. La clave más parecida (Jaccard ≥ 0,6), con la misma marca y sin números en conflicto.
+ * Nunca devuelve un grupo marcado como ruido.
+ */
+export function encontrarGrupo(grupos: Grupo[], clave: string, idsCatalogo: string[] = []): Grupo | null {
+  const candidatos = grupos.filter((g) => !g.ruido);
+  if (idsCatalogo.length) {
+    const porCatalogo = candidatos.find((g) =>
+      g.ofertas.some((o) => o.idCatalogo && idsCatalogo.includes(o.idCatalogo))
+    );
+    if (porCatalogo) return porCatalogo;
+  }
+  const exacto = candidatos.find((g) => g.clave === clave);
+  if (exacto) return exacto;
+
+  const buscada = partesClave(clave);
+  const numeros = (ts: Set<string>) => {
+    const m = new Map<string, Set<string>>();
+    for (const t of ts) {
+      if (!tieneDigito(t)) continue;
+      const c = clase(t);
+      if (!m.has(c)) m.set(c, new Set());
+      m.get(c)!.add(t);
+    }
+    return m;
+  };
+  const numBuscada = numeros(buscada.tokens);
+  let mejor: Grupo | null = null;
+  let mejorScore = 0;
+  for (const g of candidatos) {
+    const p = partesClave(g.clave);
+    if (p.marca !== buscada.marca) continue;
+    const numG = numeros(p.tokens);
+    let conflicto = false;
+    for (const [c, va] of numBuscada) {
+      const vb = numG.get(c);
+      if (vb && ![...va].every((x) => vb.has(x)) && ![...vb].every((x) => va.has(x))) conflicto = true;
+    }
+    if (conflicto) continue;
+    const s = jaccard(buscada.tokens, p.tokens);
+    if (s >= UMBRAL_MISMO_GRUPO && s > mejorScore) {
+      mejor = g;
+      mejorScore = s;
+    }
+  }
+  return mejor;
+}
+
+/** Ofertas del grupo que todavía no se siguen ni fueron descartadas por el usuario. */
+export function ofertasNuevas(
+  grupo: Grupo,
+  yaSeguidas: Set<string>, // "conector:idExterno"
+  descartadas: Set<string>,
+  filtro: "nueva" | "usada" | "ambas",
+  maximo = 10,
+): Grupo["ofertas"] {
+  return grupo.ofertas
+    .filter((o) => filtro === "ambas" || o.condicion === filtro)
+    .filter((o) => o.disponible)
+    .filter((o) => {
+      const k = `${o.conector}:${o.idExterno}`;
+      return !yaSeguidas.has(k) && !descartadas.has(k);
+    })
+    .slice(0, maximo); // ya vienen ordenadas por precio: si hay muchas, entran las más baratas
+}

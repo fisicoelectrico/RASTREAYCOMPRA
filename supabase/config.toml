@@ -8,3 +8,7 @@ verify_jwt = true
 # La función valida el secreto o el token del usuario por su cuenta.
 [functions.revisar-precios]
 verify_jwt = false
+
+# MercadoLibre redirige aquí el navegador tras "Autorizar" (sin JWT de Supabase).
+[functions.ml-autorizar]
+verify_jwt = false

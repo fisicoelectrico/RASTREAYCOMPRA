@@ -183,3 +183,8 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(-
 .row-acc{display:flex;gap:8px;align-items:center}
 .icbtn{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 10px;display:flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--brand)}
 .icbtn svg{width:14px;height:14px}
+
+.pill.nueva-oferta{background:var(--down-soft);color:var(--down)}
+.quitar{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;padding:0 2px}
+.quitar:hover{color:var(--up)}
+.card .row small{color:var(--muted);display:block;font-size:12px}

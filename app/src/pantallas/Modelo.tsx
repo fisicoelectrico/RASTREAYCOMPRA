@@ -88,7 +88,7 @@ export function Modelo({ grupo, consulta, filtro, setFiltro, volver, alRastrear 
           sugerido={Math.floor((Math.min(...elegidas.map((o) => o.precioFinal)) * 0.95) / 10000) * 10000}
           cerrar={() => setHoja(false)}
           confirmar={async (precio) => {
-            await api.rastrear(grupo, elegidas, precio, consulta);
+            await api.rastrear(grupo, elegidas, precio, consulta, filtro);
             alRastrear(elegidas.length);
           }}
         />
@@ -124,7 +124,9 @@ function HojaObjetivo({ n, sugerido, cerrar, confirmar }: { n: number; sugerido:
           />
           <button aria-label="Subir" onClick={() => setPrecio(precio + paso)}>+</button>
         </div>
-        <div className="aviso">Las alertas al celular llegan en la fase 2. Por ahora verás "En tu objetivo" en tu lista de vigilados.</div>
+        <div className="aviso">
+          También vigilamos el modelo completo: si otro vendedor lo publica más barato, lo sumamos solo. Las alertas al celular llegan en la fase 2.
+        </div>
         <div className="row" style={{ color: "var(--muted)", fontSize: 13 }}>
           <span>Revisamos precios cada 6 horas</span>
         </div>

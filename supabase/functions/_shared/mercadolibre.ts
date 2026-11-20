@@ -3,9 +3,8 @@
 //   Buscar:  GET https://api.mercadolibre.com/sites/MCO/search?q=...&condition=new|used&limit=50
 //   Revisar: GET https://api.mercadolibre.com/items?ids=MCO1,MCO2,...   (hasta 20 por llamada)
 //
-// MercadoLibre viene restringiendo las llamadas anónimas. Si se configuran los
-// secretos ML_CLIENT_ID y ML_CLIENT_SECRET (app creada en developers.mercadolibre.com.co),
-// el conector pide un token de aplicación (client_credentials) y lo envía en cada llamada.
+// MercadoLibre responde 403 a llamadas anónimas desde servidores (comprobado 2026-11-20).
+// El token sale del flujo OAuth (autorizar una vez + refresh_token): ver ml_token.ts.
 
 import type { Conector, FiltroCondicion, Oferta, Revision } from "./tipos.ts";
 import { precioFinal } from "./tipos.ts";
@@ -16,39 +15,26 @@ const API = "https://api.mercadolibre.com";
 type Json = any;
 
 export interface OpcionesML {
-  clientId?: string;
-  clientSecret?: string;
+  /** Entrega un access_token válido o null (sin autorizar todavía). Ver ml_token.ts. */
+  token?: () => Promise<string | null>;
   fetch?: typeof fetch; // inyectable para pruebas
 }
 
 export function crearConectorML(op: OpcionesML = {}): Conector {
   const f = op.fetch ?? fetch;
-  let token: { valor: string; vence: number } | null = null;
 
   async function cabeceras(): Promise<HeadersInit> {
     const h: Record<string, string> = { Accept: "application/json" };
-    if (op.clientId && op.clientSecret) {
-      if (!token || token.vence < Date.now() + 60_000) {
-        const r = await f(`${API}/oauth/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-          body: new URLSearchParams({
-            grant_type: "client_credentials",
-            client_id: op.clientId,
-            client_secret: op.clientSecret,
-          }),
-        });
-        if (!r.ok) throw new Error(`MercadoLibre no entregó token (${r.status})`);
-        const j: Json = await r.json();
-        token = { valor: j.access_token, vence: Date.now() + (j.expires_in ?? 21600) * 1000 };
-      }
-      h.Authorization = `Bearer ${token.valor}`;
-    }
+    const t = op.token ? await op.token() : null;
+    if (t) h.Authorization = `Bearer ${t}`;
     return h;
   }
 
   async function getJson(url: string): Promise<Json> {
     const r = await f(url, { headers: await cabeceras() });
+    if (r.status === 401 || r.status === 403) {
+      throw new Error(`MercadoLibre respondió ${r.status}: falta autorizar la app (ver README, sección 8)`);
+    }
     if (!r.ok) throw new Error(`MercadoLibre respondió ${r.status}`);
     return r.json();
   }
