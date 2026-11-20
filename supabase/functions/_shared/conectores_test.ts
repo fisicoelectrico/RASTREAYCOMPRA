@@ -58,7 +58,7 @@ Deno.test("VTEX: un SKU por oferta, mejor seller con stock", () => {
   const msi = ofertasExito[0];
   assertEquals(msi.idExterno, "3100001");
   assertEquals(msi.precio, 1879000, "el seller externo con stock es más barato");
-  assertEquals(msi.precioAntes, 1999000);
+  assertEquals(msi.precioAntes, null, "el tachado es del mismo seller elegido, que no tiene descuento");
   assertEquals(ofertasExito[1].disponible, false);
 });
 
@@ -139,4 +139,22 @@ Deno.test("agrupar: la clave es estable sin importar el orden de llegada", () =>
   const k1 = agrupar(todas, "rtx 5060").map((g) => g.clave).sort();
   const k2 = agrupar([...todas].reverse(), "rtx 5060").map((g) => g.clave).sort();
   assertEquals(k1, k2);
+});
+
+Deno.test("Éxito real (respuesta capturada desde Supabase): portátiles aparte, enlaces públicos", () => {
+  const real = leer("vtex_exito_real_rtx5060.json");
+  const ofs = real.flatMap((p: unknown) => productoAOfertas(p, EXITO)) as Oferta[];
+  assertEquals(ofs.length, 6);
+  assert(ofs.every((o) => o.url.startsWith("https://www.exito.com/")));
+  const giga = ofs.find((o) => o.titulo.includes("Eagle"))!;
+  assertEquals(giga.precio, 2225000);
+  assertEquals(giga.vendedor, "hommely", "Éxito propio no tiene precio; vende un seller del marketplace");
+  const cyborg = ofs.find((o) => o.titulo.includes("Cyborg"))!;
+  assertEquals(cyborg.precio, 5629900, "el seller más barato con stock");
+  assertEquals(cyborg.precioAntes, 8189890, "precio tachado del mismo seller");
+  const grupos = agrupar(ofs, "rtx 5060");
+  assertEquals(grupos.filter((g) => !g.ruido).map((g) => g.nombre), [
+    "Tarjeta Grafica Gigabyte Rtx 5060 Eagle Max Oc 8Gb Gddr7",
+  ]);
+  assert(grupos.filter((g) => g.ruido).every((g) => g.ruido === "Es un equipo completo que incluye ese componente"));
 });

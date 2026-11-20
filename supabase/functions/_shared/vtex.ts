@@ -17,14 +17,22 @@ type Json = any;
 export interface TiendaVtex {
   id: string; // "exito"
   nombre: string; // "Éxito"
-  dominio: string; // "www.exito.com"
+  dominio: string; // "www.exito.com": dominio público, para los enlaces
+  /** Host de la API. El dominio público suele estar detrás de Cloudflare y bloquea
+   *  servidores; el host nativo de VTEX ({cuenta}.vtexcommercestable.com.br) responde igual. */
+  api?: string;
 }
 
-export const EXITO: TiendaVtex = { id: "exito", nombre: "Éxito", dominio: "www.exito.com" };
+export const EXITO: TiendaVtex = {
+  id: "exito",
+  nombre: "Éxito",
+  dominio: "www.exito.com",
+  api: "exitocol.vtexcommercestable.com.br", // comprobado desde Supabase el 2026-11-20
+};
 
 export function crearConectorVtex(t: TiendaVtex, op: { fetch?: typeof fetch } = {}): Conector {
   const f = op.fetch ?? fetch;
-  const base = `https://${t.dominio}/api/catalog_system/pub/products/search`;
+  const base = `https://${t.api ?? t.dominio}/api/catalog_system/pub/products/search`;
 
   async function getJson(url: string): Promise<Json> {
     const r = await f(url, {
@@ -73,7 +81,9 @@ export function crearConectorVtex(t: TiendaVtex, op: { fetch?: typeof fetch } = 
 }
 
 /** Elige el seller con stock y menor precio (o el predeterminado si nadie tiene stock). */
-function mejorSeller(item: Json): { precio: number; disponible: boolean; nombre: string | null } | null {
+function mejorSeller(
+  item: Json,
+): { precio: number; precioLista: number; disponible: boolean; nombre: string | null } | null {
   const sellers: Json[] = item.sellers ?? [];
   const conPrecio = sellers.filter((s) => (s.commertialOffer?.Price ?? 0) > 0);
   if (!conPrecio.length) return null;
@@ -82,6 +92,7 @@ function mejorSeller(item: Json): { precio: number; disponible: boolean; nombre:
   const s = pool.reduce((a, b) => (b.commertialOffer.Price < a.commertialOffer.Price ? b : a));
   return {
     precio: Math.round(s.commertialOffer.Price),
+    precioLista: Math.round(s.commertialOffer.ListPrice ?? 0),
     disponible: conStock.length > 0,
     nombre: s.sellerName ?? null,
   };
@@ -94,7 +105,6 @@ export function productoAOfertas(pr: Json, t: TiendaVtex): Oferta[] {
   for (const item of items) {
     const s = mejorSeller(item);
     if (!s) continue;
-    const antes = Math.round(item.sellers?.[0]?.commertialOffer?.ListPrice ?? 0);
     const tituloSku = items.length > 1 && item.name && !String(pr.productName).includes(item.name)
       ? `${pr.productName} ${item.name}`
       : pr.productName;
@@ -104,7 +114,7 @@ export function productoAOfertas(pr: Json, t: TiendaVtex): Oferta[] {
       conector: `vtex:${t.id}`,
       idExterno: String(item.itemId),
       titulo: tituloSku,
-      url: pr.link ?? `https://${t.dominio}/${pr.linkText}/p`,
+      url: enlacePublico(pr, t),
       imagen: item.images?.[0]?.imageUrl ?? null,
       condicion: "nueva",
       vendedor: s.nombre,
@@ -112,7 +122,7 @@ export function productoAOfertas(pr: Json, t: TiendaVtex): Oferta[] {
       modelo: null,
       idCatalogo: null,
       precio: s.precio,
-      precioAntes: antes > s.precio ? antes : null,
+      precioAntes: s.precioLista > s.precio ? s.precioLista : null,
       envio: null,
       precioFinal: precioFinal(s.precio, null),
       disponible: s.disponible,
@@ -121,4 +131,10 @@ export function productoAOfertas(pr: Json, t: TiendaVtex): Oferta[] {
     });
   }
   return salida;
+}
+
+/** El enlace que devuelve la API apunta al host técnico; lo llevamos al dominio público de la tienda. */
+function enlacePublico(pr: Json, t: TiendaVtex): string {
+  if (pr.linkText) return `https://${t.dominio}/${pr.linkText}/p`;
+  return String(pr.link ?? `https://${t.dominio}`).replace(/^https?:\/\/[^/]+/, `https://${t.dominio}`);
 }

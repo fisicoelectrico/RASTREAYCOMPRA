@@ -28,9 +28,11 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   // ¿Quién llama? pg_cron (todo) o un usuario (solo lo suyo).
+  // El secreto de pg_cron vive solo en Vault; la base de datos lo compara (cron_secreto_valido).
   let soloUsuario: string | null = null;
-  const secreto = Deno.env.get("CRON_SECRET");
-  if (secreto && req.headers.get("x-cron-secret") === secreto) {
+  const secreto = req.headers.get("x-cron-secret");
+  const { data: esCron } = secreto ? await admin.rpc("cron_secreto_valido", { secreto }) : { data: false };
+  if (esCron === true) {
     soloUsuario = null;
   } else {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");

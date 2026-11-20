@@ -68,10 +68,17 @@ Tres ideas sostienen el diseño:
 | Tienda | Endpoint | Filtro nueva/usada | Qué se guarda como id |
 |---|---|---|---|
 | MercadoLibre | `GET api.mercadolibre.com/sites/MCO/search?q=…&condition=new\|used&limit=50` | parámetro `condition` | id de la publicación (`MCO…`) |
-| Éxito | `GET www.exito.com/api/catalog_system/pub/products/search?ft=…&_from=0&_to=49` | solo vende nuevo | `skuId` (lo que exactamente se compra) |
+| Éxito | `GET exitocol.vtexcommercestable.com.br/api/catalog_system/pub/products/search?ft=…&_from=0&_to=49` | solo vende nuevo | `skuId` (lo que exactamente se compra) |
+
+> **Por qué ese host y no www.exito.com.** El dominio público está detrás de Cloudflare y a un
+> servidor le responde 403 ("Just a moment..."). Toda tienda VTEX tiene además su host nativo
+> `{cuenta}.vtexcommercestable.com.br`, que expone el mismo catálogo sin ese bloqueo. Se comprobó
+> desde Supabase el 2026-11-20. Los enlaces que ve el usuario se reescriben a `www.exito.com`.
 
 En VTEX un producto tiene varios SKU (color, capacidad) y cada SKU puede venderlo más de un
-seller del marketplace. El conector toma el seller **con stock y menor precio**.
+seller del marketplace. El conector toma el seller **con stock y menor precio**. En la práctica,
+para tecnología Éxito casi siempre aparece sin precio propio y venden sellers externos; la app
+muestra "Vendido por …" para que se sepa a quién se le compra.
 
 ### Paso 2 · Rastrear (desde la app)
 
@@ -83,6 +90,8 @@ momento, así la gráfica tiene dato desde el minuto cero.
 
 `pg_cron` ejecuta a las 00:00, 06:00, 12:00 y 18:00 UTC (7 p. m., 1 a. m., 7 a. m. y 1 p. m. en
 Colombia) un `net.http_post` hacia la función, con un secreto propio en la cabecera `x-cron-secret`.
+Ese secreto vive **solo en Vault**: la función no lo guarda, le pregunta a la base de datos si el
+que recibió es válido (`cron_secreto_valido`). Una sola fuente de verdad y nada que copiar a mano.
 La función:
 
 - agrupa las ofertas activas por conector y pide los precios **por lotes** (MercadoLibre: 20 ids por
@@ -151,6 +160,9 @@ Migración: `supabase/migrations/20261120000000_fase1.sql`.
 | `historial_precios` | un punto por oferta y revisión | solo trigger y servidor |
 | `vigilados_resumen` (vista) | mejor precio y última revisión por modelo | — |
 
+Los permisos por tabla se declaran explícitamente (`20261120000200_permisos.sql`), porque los
+proyectos Supabase recientes ya no dan permisos automáticos a la API sobre tablas nuevas.
+
 Candados de datos: un usuario no puede colgar ofertas en el vigilado de otro (trigger
 `oferta_mismo_dueno`), no puede hacer `UPDATE` a precios, y borrar un vigilado borra en cascada sus
 ofertas e historial. `supabase/tests/prueba_rls.sql` comprueba todo esto con dos usuarios.
@@ -188,7 +200,7 @@ Sin variables de entorno la app abre en **modo demo**: usa respuestas grabadas d
 ### Pruebas del backend
 
 ```bash
-deno test --allow-read supabase/functions/_shared     # conectores y agrupación (sin internet)
+deno test --allow-read supabase/functions/_shared     # 13 pruebas: conectores y agrupación (sin internet)
 ```
 
 Para la prueba de RLS en un PostgreSQL local:
@@ -199,35 +211,33 @@ sed '/create extension/d' supabase/migrations/*.sql | psql -d prueba
 psql -d prueba -f supabase/tests/prueba_rls.sql
 ```
 
-## 8. Desplegar en tu proyecto Supabase
+## 8. Despliegue
+
+**Desplegado el 2026-11-20 en el proyecto Supabase "organizado"** (`iobwejsklryixkzotpyh`):
+las 3 migraciones, las funciones `buscar` y `revisar-precios`, el cron cada 6 h y los dos
+secretos de Vault (`project_url`, `cron_secret`). La app ya trae la URL y la publishable key en
+`app/.env.production`, así que `npm run build` genera una versión conectada a ese proyecto.
+
+Pendiente para que MercadoLibre funcione: su API responde **403** a llamadas sin token (comprobado
+desde Supabase). Crea una app gratuita en developers.mercadolibre.com.co y guarda sus credenciales
+como secretos de las Edge Functions (Dashboard → Edge Functions → Secrets):
+`ML_CLIENT_ID` y `ML_CLIENT_SECRET`. El conector pide el token de aplicación y lo renueva solo.
+
+Para desplegar en otro proyecto:
 
 ```bash
-npm i -g supabase
-supabase login
-supabase link --project-ref <ref-de-tu-proyecto>
-supabase db push                                    # aplica la migración
-supabase secrets set CRON_SECRET=<un-texto-largo-y-aleatorio>
-# opcional, recomendado (ver nota):
-supabase secrets set ML_CLIENT_ID=<id> ML_CLIENT_SECRET=<secreto>
+supabase link --project-ref <ref>
+supabase db push
 supabase functions deploy buscar
 supabase functions deploy revisar-precios --no-verify-jwt
 ```
 
-Luego, en el SQL Editor, guarda en Vault la URL y el mismo secreto para que pg_cron pueda llamar
-la función:
+y una sola vez en el SQL Editor:
 
 ```sql
 select vault.create_secret('https://<ref>.supabase.co', 'project_url');
-select vault.create_secret('<el-mismo-CRON_SECRET>', 'cron_secret');
+select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cron_secret');
 ```
-
-Y en la app, crea `app/.env.local` a partir de `app/.env.example` con la URL y la anon key del
-proyecto (Project Settings → API).
-
-> **Nota sobre MercadoLibre.** MercadoLibre ha venido restringiendo las consultas anónimas a su
-> API. Si la búsqueda responde 401/403, crea una app gratuita en
-> developers.mercadolibre.com.co y configura `ML_CLIENT_ID` y `ML_CLIENT_SECRET`: el conector pide
-> un token de aplicación y lo renueva solo.
 
 ## 9. Fases
 
