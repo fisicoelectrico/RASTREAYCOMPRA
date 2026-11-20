@@ -1,0 +1,10 @@
+# Configuración mínima del proyecto para la CLI de Supabase (supabase link / deploy).
+project_id = "rastreaycompra"
+
+[functions.buscar]
+verify_jwt = true
+
+# La llama pg_cron con su propio secreto (x-cron-secret), no con un JWT de usuario.
+# La función valida el secreto o el token del usuario por su cuenta.
+[functions.revisar-precios]
+verify_jwt = false
