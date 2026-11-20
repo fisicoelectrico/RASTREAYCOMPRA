@@ -203,16 +203,16 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(-
 
 <div class="stage">
   <section class="notes">
-    <div class="eyebrow">Prototipo navegable · v0.1</div>
+    <div class="eyebrow">Prototipo navegable · v0.2 · aprobado</div>
     <h1>Rastrea<span>Y</span>Compra</h1>
     <p class="lead">Así se vería la app antes de construirla. Toca el teléfono como si fuera real, o salta a cualquier pantalla desde el recorrido.</p>
     <ol class="flow" id="flow"></ol>
     <div class="qs">
-      <h2>Lo que necesito que me digas</h2>
+      <h2>Decisiones tomadas</h2>
       <ol>
-        <li><b>Coincidencias agrupadas por modelo.</b> Al escribir "rtx 5060" te muestro modelos (MSI, Gigabyte, ASUS…) y escondes el ruido (portátiles, la versión Ti). ¿Así, o prefieres ver cada publicación suelta?</li>
-        <li><b>Precio puesto en Colombia.</b> Amazon y AliExpress muestran envío e impuestos estimados aparte. ¿Quieres que el precio principal ya los incluya?</li>
-        <li><b>Frecuencia de revisión.</b> Propongo cada 6 horas por defecto. ¿Te sirve o lo quieres más seguido para algunos productos?</li>
+        <li><b>Coincidencias agrupadas por modelo</b>, con el ruido (portátiles, versión Ti) aparte.</li>
+        <li><b>Precio final en Colombia.</b> Amazon y AliExpress muestran el precio ya con envío e impuestos estimados.</li>
+        <li><b>Revisión cada 6 horas</b> por defecto.</li>
       </ol>
       <span class="sample">Precios, tiendas e historial son datos de ejemplo.</span>
     </div>
@@ -260,7 +260,7 @@ const CATALOG=[
   {store:'MercadoLibre',cond:'nueva',price:1719000,note:'TecnoMarket · Mercado Líder'},
   {store:'Alkosto',cond:'nueva',price:1849900,note:'Recoge en tienda hoy'},
   {store:'Éxito',cond:'nueva',price:1899000,note:'Envío $12.900'},
-  {store:'Amazon',cond:'nueva',price:1649900,note:'+ ~$215.000 envío e impuestos'},
+  {store:'Amazon',cond:'nueva',price:1864900,note:'Precio final: incluye ~$215.000 de envío e impuestos'},
   {store:'MercadoLibre',cond:'usada',price:1390000,note:'Usada 3 meses · Medellín'},
   {store:'MercadoLibre',cond:'usada',price:1450000,note:'Con factura y caja · Cali'}]},
  {id:'giga5060',name:'Gigabyte GeForce RTX 5060 Windforce OC 8GB',icon:'gpu',tags:'rtx 5060 8gb tarjeta de video grafica',offers:[
@@ -271,7 +271,7 @@ const CATALOG=[
  {id:'asus5060',name:'ASUS Dual GeForce RTX 5060 8GB OC',icon:'gpu',tags:'rtx 5060 8gb tarjeta de video grafica',offers:[
   {store:'MercadoLibre',cond:'nueva',price:1749000,note:'Tienda oficial ASUS'},
   {store:'Éxito',cond:'nueva',price:1929000,note:'Envío gratis'},
-  {store:'Amazon',cond:'nueva',price:1702000,note:'+ ~$220.000 envío e impuestos'}]},
+  {store:'Amazon',cond:'nueva',price:1922000,note:'Precio final: incluye ~$220.000 de envío e impuestos'}]},
  {id:'zotac5060',name:'Zotac Gaming RTX 5060 Twin Edge 8GB',icon:'gpu',tags:'rtx 5060 8gb tarjeta de video grafica',offers:[
   {store:'MercadoLibre',cond:'nueva',price:1629000,note:'PC Gamer Colombia'},
   {store:'MercadoLibre',cond:'usada',price:1290000,note:'Sin caja · Barranquilla'}]},
@@ -372,7 +372,7 @@ function renderHits(){
 function openProduct(id,keepPicked){const p=CATALOG.find(x=>x.id===id);go('resultados',{product:p,picked:keepPicked?S.picked:new Set()})}
 function vResultados(){
   const p=S.product, o=offersFor(p).sort((a,b)=>a.price-b.price);
-  const minNew=Math.min(...o.filter(x=>x.store!=='Amazon').map(x=>x.price));
+  const minNew=Math.min(...o.filter(x=>x.cond==='nueva').map(x=>x.price));
   return `<div class="top"><button class="back" data-act="toBuscar">${ICON.back}Coincidencias</button>
      <h2 style="font-size:21px;line-height:1.2">${p.name}</h2><div class="sub">${o.length} ofertas · elige las que quieres rastrear</div>
      <div class="seg">${['nueva','usada','ambas'].map(c=>`<button data-cond="${c}" class="${S.cond===c?'on':''}">${c==='nueva'?'Nueva':c==='usada'?'Usada':'Ambas'}</button>`).join('')}</div></div>
@@ -381,7 +381,7 @@ function vResultados(){
     ${o.length?o.map(x=>`<button class="offer ${S.picked.has(x.i)?'on':''}" data-pick="${x.i}">
        <span class="box">${S.picked.has(x.i)?ICON.check:''}</span>
        <span><span class="store"><span class="dot" style="background:${col(x.store)}"></span>${x.store} <span class="pill ${x.cond}">${x.cond==='nueva'?'Nueva':'Usada'}</span></span><small>${x.note}</small></span>
-       <span class="price num">${x.price===minNew&&x.cond==='nueva'?'<div class="best">Mejor nueva</div>':''}${fmt(x.price)}${x.store==='Amazon'?'<small style="display:block;color:var(--muted);font-size:11px">≈ '+fmt(x.price+215000)+' puesto</small>':''}</span>
+       <span class="price num">${x.price===minNew&&x.cond==='nueva'?'<div class="best">Mejor nueva</div>':''}${fmt(x.price)}</span>
      </button>`).join(''):'<div class="empty">No hay ofertas en esta condición.</div>'}
    </div>
    <div class="footer"><button class="cta" data-act="sheet" ${S.picked.size?'':'disabled'}>${S.picked.size?`Rastrear ${S.picked.size} oferta${S.picked.size>1?'s':''}`:'Marca al menos una oferta'}</button></div>`;
