@@ -12,8 +12,11 @@ export interface EstadoBusqueda {
   error: string | null;
 }
 
-const TIENDAS_ACTIVAS = ["MercadoLibre", "Éxito"];
-const TIENDAS_PRONTO = ["Alkosto", "Ktronix", "Homecenter", "Easy", "Amazon", "AliExpress"];
+const TIENDAS_ACTIVAS = ["MercadoLibre", "Éxito", "Homecenter"];
+const TIENDAS_PRONTO = ["Alkosto", "Ktronix", "Easy", "Amazon", "AliExpress"];
+
+/** "Éxito", "Éxito y Homecenter", "MercadoLibre, Éxito y Homecenter". */
+const enumerar = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
 
 interface Props {
   estado: EstadoBusqueda;
@@ -47,6 +50,9 @@ export function Buscar({ estado, setEstado, filtro, setFiltro, abrir }: Props) {
   const r = estado.resultado;
   const buenos = r?.grupos.filter((g) => !g.ruido) ?? [];
   const ruido = r?.grupos.filter((g) => g.ruido) ?? [];
+  // Ofertas por tienda en los resultados buenos, para que se vea qué tienda aportó qué.
+  const porTienda = new Map<string, number>();
+  for (const g of buenos) for (const o of g.ofertas) porTienda.set(o.tienda, (porTienda.get(o.tienda) ?? 0) + 1);
 
   return (
     <>
@@ -87,7 +93,7 @@ export function Buscar({ estado, setEstado, filtro, setFiltro, abrir }: Props) {
         <div>
           <div className="lbl" style={{ marginBottom: 8 }}>Tiendas</div>
           <div className="chips">
-            {TIENDAS_ACTIVAS.map((s) => <span key={s} className="chip on">{s}</span>)}
+            {TIENDAS_ACTIVAS.map((s) => <span key={s} className="chip on">{s}{r && !estado.cargando ? ` · ${porTienda.get(s) ?? 0}` : ""}</span>)}
             {TIENDAS_PRONTO.map((s) => <span key={s} className="chip soon">{s} · pronto</span>)}
           </div>
         </div>
@@ -169,13 +175,13 @@ function Tarjeta({ g, consulta, filtro, dim, onClick }: { g: Grupo; consulta: st
   const nu = g.ofertas.filter((o) => o.condicion === "nueva");
   const us = g.ofertas.filter((o) => o.condicion === "usada");
   const min = (a: typeof nu) => fmt(Math.min(...a.map((o) => o.precioFinal)));
-  const tiendas = new Set(g.ofertas.map((o) => o.tienda)).size;
+  const tiendas = enumerar([...new Set(g.ofertas.map((o) => o.tienda))]);
   return (
     <button className={`hit ${dim ? "dim" : ""}`} onClick={onClick}>
       <span className="thumb">{g.imagen ? <img src={g.imagen} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} /> : <IcCaja />}</span>
       <span>
         <b><Resaltado texto={g.nombre} consulta={consulta} /></b>
-        <small>{dim && g.ruido ? `${g.ruido} · ` : ""}{g.ofertas.length} oferta{g.ofertas.length > 1 ? "s" : ""} en {tiendas} tienda{tiendas > 1 ? "s" : ""}</small>
+        <small>{dim && g.ruido ? `${g.ruido} · ` : ""}{g.ofertas.length} oferta{g.ofertas.length > 1 ? "s" : ""} en {tiendas}</small>
       </span>
       <span className="from num">
         {nu.length > 0 && <><small>nueva desde</small>{min(nu)}</>}
