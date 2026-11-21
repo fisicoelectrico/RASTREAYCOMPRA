@@ -1,0 +1,96 @@
+[
+  {
+    "productId": "900001",
+    "productName": "Tarjeta de video MSI GeForce RTX 5060 8GB Ventus 2X OC",
+    "brand": "MSI",
+    "linkText": "tarjeta-de-video-msi-rtx-5060-ventus",
+    "link": "https://www.exito.com/tarjeta-de-video-msi-rtx-5060-ventus/p",
+    "items": [
+      {
+        "itemId": "3100001",
+        "name": "Única",
+        "images": [{ "imageUrl": "https://exitocol.vtexassets.com/arquivos/ids/1.jpg" }],
+        "sellers": [
+          {
+            "sellerId": "1",
+            "sellerName": "Éxito",
+            "sellerDefault": true,
+            "commertialOffer": { "Price": 1899000, "ListPrice": 1999000, "AvailableQuantity": 10 }
+          },
+          {
+            "sellerId": "77",
+            "sellerName": "MegaTech SAS",
+            "sellerDefault": false,
+            "commertialOffer": { "Price": 1879000, "ListPrice": 1879000, "AvailableQuantity": 2 }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "productId": "900002",
+    "productName": "Tarjeta Gráfica ASUS Dual GeForce RTX 5060 OC 8GB",
+    "brand": "ASUS",
+    "linkText": "asus-dual-rtx-5060",
+    "link": "https://www.exito.com/asus-dual-rtx-5060/p",
+    "items": [
+      {
+        "itemId": "3100002",
+        "name": "Única",
+        "images": [{ "imageUrl": "https://exitocol.vtexassets.com/arquivos/ids/2.jpg" }],
+        "sellers": [
+          {
+            "sellerId": "1",
+            "sellerName": "Éxito",
+            "sellerDefault": true,
+            "commertialOffer": { "Price": 1929000, "ListPrice": 1929000, "AvailableQuantity": 0 }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "productId": "900003",
+    "productName": "Portátil Gamer ASUS TUF A15 RTX 5060 8GB",
+    "brand": "ASUS",
+    "linkText": "portatil-asus-tuf",
+    "link": "https://www.exito.com/portatil-asus-tuf/p",
+    "items": [
+      {
+        "itemId": "3100003",
+        "name": "Única",
+        "images": [],
+        "sellers": [
+          {
+            "sellerId": "1",
+            "sellerName": "Éxito",
+            "sellerDefault": true,
+            "commertialOffer": { "Price": 5699000, "ListPrice": 5999000, "AvailableQuantity": 3 }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "productId": "900004",
+    "productName": "Mouse Gamer RGB",
+    "brand": "Genérica",
+    "linkText": "mouse",
+    "link": "https://www.exito.com/mouse/p",
+    "items": [
+      {
+        "itemId": "3100004",
+        "name": "Única",
+        "images": [],
+        "sellers": [
+          {
+            "sellerId": "1",
+            "sellerName": "Éxito",
+            "sellerDefault": true,
+            "commertialOffer": { "Price": 59000, "ListPrice": 59000, "AvailableQuantity": 3 }
+          }
+        ]
+      }
+    ]
+  }
+]

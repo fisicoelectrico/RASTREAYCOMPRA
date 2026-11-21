@@ -1,0 +1,23 @@
+[
+  {
+    "code": 200,
+    "body": {
+      "id": "MCO1500000001",
+      "price": 1689000,
+      "status": "active",
+      "available_quantity": 3,
+      "shipping": { "free_shipping": true }
+    }
+  },
+  {
+    "code": 200,
+    "body": {
+      "id": "MCO1500000002",
+      "price": 1350000,
+      "status": "paused",
+      "available_quantity": 1,
+      "shipping": { "free_shipping": false }
+    }
+  },
+  { "code": 404, "body": { "message": "Item not found" } }
+]
