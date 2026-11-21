@@ -6,10 +6,12 @@
 //   - pide el precio actual a su tienda (en lotes, un conector a la vez),
 //   - guarda una fila en historial_precios,
 //   - actualiza el precio actual en ofertas.
+//   - decide si hay que avisar (ver _shared/alertas.ts) y guarda la alerta.
 // Si una oferta no aparece 3 revisiones seguidas, queda como no disponible.
 // Después, para cada modelo con "seguir modelo" activo, repite la búsqueda guardada
 // y suma los vendedores nuevos del mismo grupo (ver descubrir()).
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { decidirAlerta } from "../_shared/alertas.ts";
 import { agrupar, encontrarGrupo, ofertasNuevas } from "../_shared/agrupar.ts";
 import { conectoresActivos, conTiempoLimite } from "../_shared/conectores.ts";
 import { CORS, error, json } from "../_shared/http.ts";
@@ -17,10 +19,16 @@ import type { FiltroCondicion, Grupo, Oferta, Revision } from "../_shared/tipos.
 
 interface FilaOferta {
   id: string;
+  user_id: string;
+  vigilado_id: string;
   conector: string;
+  tienda: string;
   id_externo: string;
+  url: string;
   precio_final: number;
+  disponible: boolean;
   errores_seguidos: number;
+  vigilados: { activo: boolean; nombre: string; precio_objetivo: number };
 }
 
 Deno.serve(async (req) => {
@@ -46,17 +54,18 @@ Deno.serve(async (req) => {
 
   let q = admin
     .from("ofertas")
-    .select("id, conector, id_externo, precio_final, errores_seguidos, vigilados!inner(activo)")
+    .select("id, user_id, vigilado_id, conector, tienda, id_externo, url, precio_final, disponible, errores_seguidos, vigilados!inner(activo, nombre, precio_objetivo)")
     .eq("vigilados.activo", true);
   if (soloUsuario) q = q.eq("user_id", soloUsuario);
   const { data: filas, error: errLectura } = await q;
   if (errLectura) return error(errLectura.message, 500);
 
   const ahora = new Date().toISOString();
-  const resumen = { revisadas: 0, cambiaron: 0, sin_respuesta: 0, errores: [] as string[] };
+  const resumen = { revisadas: 0, cambiaron: 0, sin_respuesta: 0, alertas: 0, errores: [] as string[] };
+  const alertas = [];
 
   for (const c of conectoresActivos(admin)) {
-    const suyas = (filas as FilaOferta[]).filter((f) => f.conector === c.id);
+    const suyas = (filas as unknown as FilaOferta[]).filter((f) => f.conector === c.id);
     if (!suyas.length) continue;
 
     let revisiones: Revision[];
@@ -90,6 +99,19 @@ Deno.serve(async (req) => {
         capturado_en: ahora,
       });
       if (f.precio_final !== r.precioFinal) resumen.cambiaron++;
+      const a = decidirAlerta(
+        { precioFinal: f.precio_final, disponible: f.disponible },
+        { precioFinal: r.precioFinal, disponible: r.disponible },
+        f.vigilados.precio_objetivo,
+        f.vigilados.nombre,
+        f.tienda,
+      );
+      if (a) {
+        alertas.push({
+          user_id: f.user_id, vigilado_id: f.vigilado_id, oferta_id: f.id,
+          tipo: a.tipo, titulo: a.titulo, cuerpo: a.cuerpo, url: f.url, precio: r.precioFinal,
+        });
+      }
       await admin.from("ofertas").update({
         precio: r.precio,
         envio: r.envio,
@@ -104,6 +126,12 @@ Deno.serve(async (req) => {
       const { error: errH } = await admin.from("historial_precios").insert(historial);
       if (errH) resumen.errores.push(`historial ${c.tienda}: ${errH.message}`);
     }
+  }
+
+  if (alertas.length) {
+    const { error: errA } = await admin.from("alertas").insert(alertas);
+    if (errA) resumen.errores.push(`alertas: ${errA.message}`);
+    else resumen.alertas = alertas.length;
   }
 
   const descubiertas = await descubrir(admin, soloUsuario, resumen.errores);

@@ -176,6 +176,21 @@ export function crearApiSupabase(url: string, anonKey: string): Api {
       falla(r.error);
     },
 
+    async alertas() {
+      const { data, error } = await sb.from("alertas")
+        .select("id, tipo, titulo, cuerpo, url, creada_en, leida")
+        .order("creada_en", { ascending: false }).limit(100);
+      falla(error);
+      return (data ?? []).map((a) => ({
+        id: a.id, tipo: a.tipo, titulo: a.titulo, cuerpo: a.cuerpo, url: a.url, creadaEn: a.creada_en, leida: a.leida,
+      }));
+    },
+
+    async marcarLeidas() {
+      const { error } = await sb.from("alertas").update({ leida: true }).eq("leida", false);
+      falla(error);
+    },
+
     async ofertasCenso({ areas, umbral, base }) {
       if (!areas.length) return [];
       const { data, error } = await sb.rpc("ofertas_censo", { p_areas: areas, p_umbral: umbral, p_base: base, p_limite: 200 });
