@@ -7,11 +7,13 @@
 //   - guarda una fila en historial_precios,
 //   - actualiza el precio actual en ofertas.
 //   - decide si hay que avisar (ver _shared/alertas.ts) y guarda la alerta.
+// Al final manda por Web Push las alertas pendientes (ver _shared/push.ts).
 // Si una oferta no aparece 3 revisiones seguidas, queda como no disponible.
 // Después, para cada modelo con "seguir modelo" activo, repite la búsqueda guardada
 // y suma los vendedores nuevos del mismo grupo (ver descubrir()).
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { decidirAlerta } from "../_shared/alertas.ts";
+import { enviarPendientes } from "../_shared/push.ts";
 import { agrupar, encontrarGrupo, ofertasNuevas } from "../_shared/agrupar.ts";
 import { conectoresActivos, conTiempoLimite } from "../_shared/conectores.ts";
 import { CORS, error, json } from "../_shared/http.ts";
@@ -135,8 +137,9 @@ Deno.serve(async (req) => {
   }
 
   const descubiertas = await descubrir(admin, soloUsuario, resumen.errores);
+  const push = await enviarPendientes(admin, soloUsuario);
 
-  return json({ origen: soloUsuario ? "usuario" : "pg_cron", ...resumen, descubiertas });
+  return json({ origen: soloUsuario ? "usuario" : "pg_cron", ...resumen, descubiertas, push });
 });
 
 interface FilaVigilado {

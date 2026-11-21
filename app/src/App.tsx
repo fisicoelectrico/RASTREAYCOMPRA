@@ -132,7 +132,7 @@ export function App() {
           );
         })()}
         {pantalla.id === "ofertas" && <Ofertas avisar={avisar} />}
-        {pantalla.id === "alertas" && <Alertas modo={api.modo} salir={async () => { await api.salir(); setUsuario(null); }} />}
+        {pantalla.id === "alertas" && <Alertas modo={api.modo} avisar={avisar} salir={async () => { await api.salir(); setUsuario(null); }} />}
       </main>
 
       <nav className="tabbar" aria-label="Secciones">

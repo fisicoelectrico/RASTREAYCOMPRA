@@ -202,6 +202,18 @@ export function crearApiDemo(): Api {
 
     async marcarLeidas() {},
 
+    async notificaciones() {
+      return "no-soportado" as const;
+    },
+
+    async activarNotificaciones(): Promise<never> {
+      throw new Error("En modo demo no hay servidor que envíe notificaciones.");
+    },
+
+    async probarNotificacion(): Promise<never> {
+      throw new Error("En modo demo no hay servidor que envíe notificaciones.");
+    },
+
     async ofertasCenso({ areas, umbral, base }: { areas: string[]; umbral: number; base: BaseCenso }) {
       await espera(300);
       return censoDemo()

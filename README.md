@@ -183,6 +183,28 @@ Topes de las tiendas: Homecenter corta en 9.900 resultados por categoría y VTEX
 las áreas grandes se definen por subcategorías (`AREAS` en `censo.ts`). Si una categoría toca el
 tope, el área queda marcada `truncada`.
 
+### 3c. Alertas y notificaciones (pestaña "Alertas")
+
+En cada revisión de 6 horas, `_shared/alertas.ts` compara la lectura nueva con la anterior y crea
+una fila en `alertas` cuando:
+
+- el precio final **cruza** el precio objetivo (antes estaba por encima; así no se repite cada 6 h),
+- baja **5 % o más** frente a la revisión anterior, o
+- vuelve a estar disponible.
+
+Al terminar, `revisar-precios` manda las alertas pendientes por **Web Push estándar con llaves
+VAPID** (`_shared/push.ts`, librería `web-push`), sin Firebase:
+
+1. En la app, "Activar notificaciones" pide permiso, suscribe el service worker con la llave pública
+   (la entrega la función `notificar`) y guarda la suscripción con la RPC `registrar_dispositivo`.
+2. El servidor cifra cada alerta para cada suscripción del usuario y la envía con `Urgency: high`
+   (Android no la retrasa). 404/410 = suscripción muerta: se borra. 5 fallos seguidos, también.
+3. `public/push-sw.js` (importado en el service worker) muestra la notificación aunque la app
+   esté cerrada; al tocarla abre la oferta en la tienda.
+
+"Enviar notificación de prueba" llama `notificar` con `{"accion":"prueba"}`. Funciona en Chrome de
+Android con la PWA servida por HTTPS (o la APK TWA, que es la misma PWA); no en un WebView.
+
 ## 4. Precio final
 
 Decisión: **el precio que se muestra es siempre el precio final**.
@@ -249,7 +271,7 @@ Sin variables de entorno la app abre en **modo demo**: usa respuestas grabadas d
 ### Pruebas del backend
 
 ```bash
-deno test --allow-read supabase/functions/_shared     # 29 pruebas: conectores (ML, Éxito, Homecenter), agrupación, seguir el modelo, token ML y censo (sin internet)
+deno test -A supabase/functions/_shared     # 35 pruebas: conectores (ML, Éxito, Homecenter), agrupación, seguir el modelo, token ML, censo, alertas y Web Push (sin internet)
 ```
 
 Para la prueba de RLS en un PostgreSQL local:
@@ -259,6 +281,7 @@ psql -d prueba -f supabase/tests/stub_supabase.sql
 sed '/create extension/d' supabase/migrations/*.sql | psql -d prueba
 psql -d prueba -f supabase/tests/prueba_rls.sql
 psql -d prueba -f supabase/tests/prueba_censo.sql   # catálogo legible, intereses privados, base de comparación
+psql -d prueba -f supabase/tests/prueba_alertas.sql # alertas privadas, solo marcar leídas, celulares por cuenta
 ```
 
 ## 8. Despliegue
@@ -288,6 +311,10 @@ autoriza queda fijada (otra cuenta recibe 409).
 
 **Censo (2026-11-21):** migración `20261121000500_censo.sql` + función `censo` (`--no-verify-jwt`,
 la llama pg_cron con el secreto). La primera llamada sincroniza la tabla `censo_areas`.
+
+**Alertas (pendiente de desplegar):** migración `20261121000600_alertas.sql`, función `notificar`
+(con JWT) y `revisar-precios` nueva. Secretos de las Edge Functions: `VAPID_PUBLIC_KEY` y
+`VAPID_PRIVATE_KEY` (genéralos con `npx web-push generate-vapid-keys`; la privada nunca va al repo).
 
 ### APK de Android
 

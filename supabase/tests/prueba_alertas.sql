@@ -18,10 +18,19 @@ do $$ begin
   insert into public.alertas (user_id, tipo, titulo, cuerpo) values (auth.uid(), 'prueba', 'x', 'x');
   raise exception 'FALLO: A creó una alerta';
 exception when insufficient_privilege then null; end $$;
-insert into public.dispositivos (canal, token) values ('fcm', 'token-a');
+select public.registrar_dispositivo('https://fcm.googleapis.com/fcm/send/a', 'k', 's', 'Android');
+do $$ begin
+  insert into public.dispositivos (endpoint, p256dh, auth) values ('https://x/y', 'k', 's');
+  raise exception 'FALLO: insert directo permitido';
+exception when insufficient_privilege then null; end $$;
 select 'A registra su celular' as caso, count(*) = 1 as ok from public.dispositivos;
 
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';
 select 'B no ve el celular de A' as caso, count(*) = 0 as ok from public.dispositivos;
 select 'B no ve que A leyó' as caso, bool_and(not leida) as ok from public.alertas;
+-- El mismo navegador, ahora con la cuenta B: la suscripción pasa a B.
+select public.registrar_dispositivo('https://fcm.googleapis.com/fcm/send/a', 'k2', 's2', 'Android');
+select 'el celular pasa a B' as caso, count(*) = 1 as ok from public.dispositivos;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select 'A ya no lo ve' as caso, count(*) = 0 as ok from public.dispositivos;
 reset role;

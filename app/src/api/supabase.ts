@@ -1,5 +1,6 @@
 // Implementación real: habla con Supabase (tablas con RLS + Edge Functions).
 import { createClient } from "@supabase/supabase-js";
+import { estadoPush, suscribirPush } from "./push.ts";
 import { type Api, type BaseCenso, TIENDA_DE_CONECTOR, type Vigilado } from "./tipos.ts";
 
 export function crearApiSupabase(url: string, anonKey: string): Api {
@@ -7,6 +8,17 @@ export function crearApiSupabase(url: string, anonKey: string): Api {
 
   const falla = (e: { message: string } | null) => {
     if (e) throw new Error(e.message);
+  };
+
+  /** Llama una Edge Function y, si falla, muestra el mensaje que devolvió (no el genérico). */
+  const invocar = async <T,>(nombre: string, body: Record<string, unknown>): Promise<T> => {
+    const { data, error } = await sb.functions.invoke(nombre, { body });
+    if (error) {
+      const r = (error as { context?: Response }).context;
+      const detalle = r ? await r.json().then((j) => j.error as string).catch(() => null) : null;
+      throw new Error(detalle ?? error.message);
+    }
+    return data as T;
   };
 
   return {
@@ -189,6 +201,24 @@ export function crearApiSupabase(url: string, anonKey: string): Api {
     async marcarLeidas() {
       const { error } = await sb.from("alertas").update({ leida: true }).eq("leida", false);
       falla(error);
+    },
+
+    notificaciones: estadoPush,
+
+    async activarNotificaciones() {
+      const { llave } = await invocar<{ llave: string }>("notificar", { accion: "llave" });
+      const sub = await suscribirPush(llave);
+      const j = sub.toJSON();
+      const { error } = await sb.rpc("registrar_dispositivo", {
+        p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh, p_auth: j.keys?.auth,
+        p_agente: navigator.userAgent.slice(0, 200),
+      });
+      falla(error);
+      return "activas";
+    },
+
+    async probarNotificacion() {
+      return invocar<{ entregas: number }>("notificar", { accion: "prueba" });
     },
 
     async ofertasCenso({ areas, umbral, base }) {

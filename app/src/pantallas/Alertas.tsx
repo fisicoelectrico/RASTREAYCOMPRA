@@ -2,12 +2,62 @@
 // (llegó al precio objetivo, bajó 5 % o más, volvió a stock). Al abrirla se marcan como leídas.
 // El envío al celular como notificación usa la misma tabla (columna enviada_en).
 import { useEffect, useState } from "react";
-import type { AlertaPrecio } from "../api/index.ts";
+import type { AlertaPrecio, EstadoNotificaciones } from "../api/index.ts";
 import { api } from "../api/index.ts";
 import { reiniciarDemo } from "../api/demo.ts";
 import { haceCuanto } from "../util.ts";
 
-export function Alertas({ modo, salir }: { modo: "supabase" | "demo"; salir: () => void }) {
+const TEXTO_ESTADO: Record<EstadoNotificaciones, string> = {
+  "no-soportado": "Este navegador no recibe notificaciones. Usa la app instalada o Chrome en Android.",
+  bloqueadas: "Bloqueaste las notificaciones de esta app. Actívalas en los ajustes del sitio o de la app.",
+  inactivas: "Actívalas para que te avisemos al celular aunque la app esté cerrada.",
+  activas: "Este celular recibe tus alertas de precio.",
+};
+
+function Notificaciones({ avisar }: { avisar: (t: string) => void }) {
+  const [estado, setEstado] = useState<EstadoNotificaciones | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  useEffect(() => {
+    api.notificaciones().then(setEstado).catch(() => setEstado("no-soportado"));
+  }, []);
+
+  const correr = async (f: () => Promise<void>) => {
+    setOcupado(true);
+    try {
+      await f();
+    } catch (e) {
+      avisar((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const activar = () => correr(async () => setEstado(await api.activarNotificaciones()));
+  const probar = () =>
+    correr(async () => {
+      const r = await api.probarNotificacion();
+      avisar(r.entregas ? "Enviada. Debería llegarte en unos segundos." : "El servidor no pudo entregarla. Vuelve a activar las notificaciones.");
+    });
+
+  if (!estado) return null;
+  return (
+    <div className="card" style={{ display: "grid", gap: 10 }}>
+      <b>Notificaciones en este celular</b>
+      <span style={{ color: "var(--muted)" }}>{TEXTO_ESTADO[estado]}</span>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        {(estado === "inactivas" || estado === "activas") && (
+          <button className={estado === "activas" ? "chip" : "chip on"} disabled={ocupado} onClick={activar}>
+            {estado === "activas" ? "Volver a registrar" : "Activar notificaciones"}
+          </button>
+        )}
+        {estado === "activas" && (
+          <button className="chip on" disabled={ocupado} onClick={probar}>Enviar notificación de prueba</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function Alertas({ modo, salir, avisar }: { modo: "supabase" | "demo"; salir: () => void; avisar: (t: string) => void }) {
   const [alertas, setAlertas] = useState<AlertaPrecio[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +78,7 @@ export function Alertas({ modo, salir }: { modo: "supabase" | "demo"; salir: () 
       </div>
       <div className="pad">
         {error && <div className="err">{error}</div>}
+        {modo === "supabase" && <Notificaciones avisar={avisar} />}
         {!alertas && !error && <div className="cargando"><div className="esqueleto" /></div>}
         {alertas?.length === 0 && (
           <div className="empty">
