@@ -191,6 +191,29 @@ export function crearApiDemo(): Api {
       guardar(estado);
     },
 
+    async alertas() {
+      await espera(150);
+      const hace = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+      return [
+        { id: 2, tipo: "objetivo" as const, titulo: "🎯 MSI RTX 5060 llegó a tu precio", cuerpo: "$1.549.900 en Éxito (tu objetivo: $1.600.000)", url: null, creadaEn: hace(2), leida: false },
+        { id: 1, tipo: "bajada" as const, titulo: "↓ 7 % en Taladro Bosch", cuerpo: "$969.900 → $899.900 en Homecenter", url: null, creadaEn: hace(30), leida: true },
+      ];
+    },
+
+    async marcarLeidas() {},
+
+    async notificaciones() {
+      return "no-soportado" as const;
+    },
+
+    async activarNotificaciones(): Promise<never> {
+      throw new Error("En modo demo no hay servidor que envíe notificaciones.");
+    },
+
+    async probarNotificacion(): Promise<never> {
+      throw new Error("En modo demo no hay servidor que envíe notificaciones.");
+    },
+
     async ofertasCenso({ areas, umbral, base }: { areas: string[]; umbral: number; base: BaseCenso }) {
       await espera(300);
       return censoDemo()

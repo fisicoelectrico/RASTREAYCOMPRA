@@ -132,7 +132,7 @@ export function App() {
           );
         })()}
         {pantalla.id === "ofertas" && <Ofertas avisar={avisar} />}
-        {pantalla.id === "alertas" && <Alertas modo={api.modo} salir={async () => { await api.salir(); setUsuario(null); }} />}
+        {pantalla.id === "alertas" && <Alertas modo={api.modo} avisar={avisar} salir={async () => { await api.salir(); setUsuario(null); }} />}
       </main>
 
       <nav className="tabbar" aria-label="Secciones">
@@ -140,7 +140,7 @@ export function App() {
         <button className={pestaña === "buscar" ? "on" : ""} onClick={() => ir({ id: "buscar" })}><IcBuscar />Buscar</button>
         <button className={pestaña === "ofertas" ? "on" : ""} onClick={() => ir({ id: "ofertas" })}><IcEtiqueta />Ofertas</button>
         <button className={pestaña === "alertas" ? "on" : ""} onClick={() => ir({ id: "alertas" })}>
-          <IcCampana />Alertas<span className="badge">pronto</span>
+          <IcCampana />Alertas
         </button>
       </nav>
 

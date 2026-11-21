@@ -12,6 +12,8 @@ export default defineConfig({
       // así una versión nueva de la APK nunca queda tapada por una caché vieja.
       disable: process.env.CAPACITOR === "1",
       registerType: "autoUpdate",
+      // Las notificaciones Web Push se manejan en public/push-sw.js.
+      workbox: { importScripts: ["push-sw.js"] },
       includeAssets: ["icono.svg"],
       manifest: {
         name: "RastreaYCompra",

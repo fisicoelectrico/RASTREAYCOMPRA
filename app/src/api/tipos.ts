@@ -63,6 +63,19 @@ export interface OfertaCenso {
   precios30d: number[];
 }
 
+export interface AlertaPrecio {
+  id: number;
+  tipo: "objetivo" | "bajada" | "vuelve_stock" | "prueba";
+  titulo: string;
+  cuerpo: string;
+  url: string | null;
+  creadaEn: string;
+  leida: boolean;
+}
+
+/** Estado de las notificaciones en este navegador/celular. */
+export type EstadoNotificaciones = "no-soportado" | "bloqueadas" | "inactivas" | "activas";
+
 export interface Api {
   modo: "supabase" | "demo";
   usuario(): Promise<{ email: string } | null>;
@@ -81,6 +94,13 @@ export interface Api {
   areasCenso(): Promise<AreaCenso[]>;
   cambiarInteres(areaId: string, interesa: boolean): Promise<void>;
   ofertasCenso(o: { areas: string[]; umbral: number; base: BaseCenso }): Promise<OfertaCenso[]>;
+  alertas(): Promise<AlertaPrecio[]>;
+  marcarLeidas(): Promise<void>;
+  notificaciones(): Promise<EstadoNotificaciones>;
+  /** Pide permiso, suscribe el navegador (Web Push) y guarda la suscripción. */
+  activarNotificaciones(): Promise<EstadoNotificaciones>;
+  /** Crea una alerta de prueba y la manda a los celulares de la cuenta. */
+  probarNotificacion(): Promise<{ entregas: number }>;
 }
 
 export const TIENDA_DE_CONECTOR: Record<string, string> = {
