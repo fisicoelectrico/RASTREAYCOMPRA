@@ -24,3 +24,6 @@ export const IcCaja = () => (
 export const IcRefrescar = () => (
   <svg viewBox="0 0 24 24" {...p} strokeWidth={2}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
 );
+export const IcEtiqueta = () => (
+  <svg viewBox="0 0 24 24" {...p}><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="8" cy="8" r="1.6" /></svg>
+);

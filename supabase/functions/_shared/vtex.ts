@@ -30,22 +30,49 @@ export const EXITO: TiendaVtex = {
   api: "exitocol.vtexcommercestable.com.br", // comprobado desde Supabase el 2026-11-20
 };
 
-export function crearConectorVtex(t: TiendaVtex, op: { fetch?: typeof fetch } = {}): Conector {
+/** Página de una categoría para el censo. VTEX no deja pasar de _from=2500. */
+export interface PaginaVtex {
+  ofertas: Oferta[];
+  total: number; // del encabezado "resources: 0-49/1234"
+  porPagina: number;
+}
+export const VTEX_POR_PAGINA = 50;
+export const VTEX_MAX_RESULTADOS = 2500;
+
+export function crearConectorVtex(
+  t: TiendaVtex,
+  op: { fetch?: typeof fetch } = {},
+): Conector & { categoria(ruta: string, pagina: number): Promise<PaginaVtex> } {
   const f = op.fetch ?? fetch;
   const base = `https://${t.api ?? t.dominio}/api/catalog_system/pub/products/search`;
 
-  async function getJson(url: string): Promise<Json> {
+  async function pedir(url: string): Promise<Response> {
     const r = await f(url, {
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (RastreaYCompra; +seguimiento de precios)" },
     });
     // VTEX responde 206 (Partial Content) cuando hay más resultados: también es éxito.
     if (!r.ok) throw new Error(`${t.nombre} respondió ${r.status}`);
-    return r.json();
+    return r;
   }
+  const getJson = async (url: string): Promise<Json> => (await pedir(url)).json();
 
   return {
     id: `vtex:${t.id}`,
     tienda: t.nombre,
+
+    async categoria(ruta: string, pagina: number): Promise<PaginaVtex> {
+      const desde = (pagina - 1) * VTEX_POR_PAGINA;
+      if (desde >= VTEX_MAX_RESULTADOS) return { ofertas: [], total: VTEX_MAX_RESULTADOS, porPagina: VTEX_POR_PAGINA };
+      const p = new URLSearchParams({ fq: `C:${ruta}`, _from: String(desde), _to: String(desde + VTEX_POR_PAGINA - 1) });
+      const r = await pedir(`${base}?${p}`);
+      const productos: Json[] = await r.json();
+      const total = Number(r.headers.get("resources")?.split("/")[1] ?? productos.length);
+      return {
+        ofertas: productos.flatMap((pr) => productoAOfertas(pr, t)),
+        total: Math.min(total, VTEX_MAX_RESULTADOS),
+        porPagina: VTEX_POR_PAGINA,
+      };
+    },
 
     async buscar(consulta: string, filtro: FiltroCondicion): Promise<Oferta[]> {
       if (filtro === "usada") return []; // las cadenas VTEX solo venden nuevo

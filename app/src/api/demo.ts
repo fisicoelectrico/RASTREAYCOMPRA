@@ -7,7 +7,10 @@ import { resultadoAOferta } from "../../../supabase/functions/_shared/mercadolib
 import { EXITO, productoAOfertas } from "../../../supabase/functions/_shared/vtex.ts";
 import ml from "../../../supabase/functions/_shared/fixtures/ml_rtx5060.json";
 import exito from "../../../supabase/functions/_shared/fixtures/vtex_exito_rtx5060.json";
-import type { Api, Oferta, PuntoHistorial, Vigilado } from "./tipos.ts";
+import { leerPagina } from "../../../supabase/functions/_shared/homecenter.ts";
+import { actualizar, AREAS, bajada, diaColombia } from "../../../supabase/functions/_shared/censo.ts";
+import hcTaladros from "../../../supabase/functions/_shared/fixtures/homecenter_taladros.json";
+import type { Api, AreaCenso, BaseCenso, Oferta, OfertaCenso, PuntoHistorial, Vigilado } from "./tipos.ts";
 
 const extra = (tienda: string, id: string, titulo: string, precio: number, cond: "nueva" | "usada" = "nueva", marca: string | null = null): Oferta => ({
   tienda, conector: tienda === "MercadoLibre" ? "mercadolibre" : "vtex:exito", idExterno: id, titulo,
@@ -26,10 +29,31 @@ const CATALOGO: Oferta[] = [
   extra("MercadoLibre", "MCO-H1", "Microinversor Hoymiles Hms-800w-2t Wifi", 1120000, "nueva", "Hoymiles"),
   extra("MercadoLibre", "MCO-H2", "Microinversor Hoymiles HMS 800W 2T Monofásico 220V", 1165000, "nueva", "Hoymiles"),
   extra("MercadoLibre", "MCO-H3", "Microinversor Hoymiles Hms-1600w-4t", 1890000, "nueva", "Hoymiles"),
+  ...leerPagina(hcTaladros).ofertas,
 ];
 
+/**
+ * Censo simulado: los taladros grabados de Homecenter con 30 días de historia inventada,
+ * pasados por la MISMA función actualizar() del servidor. Unos bajaron de verdad, otros no.
+ */
+function censoDemo(): (OfertaCenso & { normal: number; anterior: number | null })[] {
+  const hoy = diaColombia();
+  return leerPagina(hcTaladros).ofertas.map((o, i) => {
+    const normal = o.precioAntes ?? o.precioFinal;
+    // Historia: 2 de cada 3 estuvieron 30 días al precio normal (bajada real); el resto ya estaba así.
+    const antes = i % 3 !== 2 ? normal : o.precioFinal;
+    const prev = { precio: antes, precios30d: Array(29).fill(antes), ultimoDia: "2000-01-01", precioAnterior: null };
+    const a = actualizar(prev, o.precioFinal, o.precioAntes, hoy);
+    return {
+      id: i + 1, tienda: o.tienda, titulo: o.titulo, marca: o.marca, url: o.url, imagen: o.imagen,
+      areas: ["homecenter:herramientas"], precio: a.precio, referencia: a.precioRef, base: a.baseRef,
+      bajada: bajada(a.precio, a.precioRef), precios30d: a.precios30d, normal, anterior: a.precioAnterior,
+    };
+  });
+}
+
 const CLAVE = "rastreaycompra-demo-v1";
-interface Estado { vigilados: Vigilado[]; recientes: string[] }
+interface Estado { vigilados: Vigilado[]; recientes: string[]; areas?: string[] }
 const leer = (): Estado => {
   try {
     return JSON.parse(localStorage.getItem(CLAVE) ?? "") as Estado;
@@ -146,6 +170,37 @@ export function crearApiDemo(): Api {
       estado.vigilados = estado.vigilados.map((v) => ({ ...v, ultimaRevision: new Date().toISOString() }));
       guardar(estado);
       return { revisadas: estado.vigilados.reduce((n, v) => n + v.ofertas.length, 0), cambiaron: 0 };
+    },
+
+    async areasCenso(): Promise<AreaCenso[]> {
+      await espera(200);
+      const mias = new Set(estado.areas ?? ["homecenter:herramientas"]);
+      return AREAS.map((a) => ({
+        id: a.id, conector: a.conector, tienda: a.tienda, nombre: a.nombre,
+        nProductos: a.id === "homecenter:herramientas" ? 6 : 0, truncada: false,
+        ultimaPasada: a.id === "homecenter:herramientas" ? new Date().toISOString() : null,
+        interesa: mias.has(a.id),
+      }));
+    },
+
+    async cambiarInteres(areaId, interesa) {
+      const mias = new Set(estado.areas ?? ["homecenter:herramientas"]);
+      if (interesa) mias.add(areaId);
+      else mias.delete(areaId);
+      estado.areas = [...mias];
+      guardar(estado);
+    },
+
+    async ofertasCenso({ areas, umbral, base }: { areas: string[]; umbral: number; base: BaseCenso }) {
+      await espera(300);
+      return censoDemo()
+        .filter((o) => o.areas.some((a) => areas.includes(a)))
+        .map((o) => {
+          const ref = base === "normal" ? o.normal : base === "anterior" ? o.anterior : o.referencia;
+          return { ...o, referencia: ref ?? 0, base: base === "mediana" ? o.base : base, bajada: bajada(o.precio, ref) };
+        })
+        .filter((o) => o.referencia > 0 && o.bajada >= umbral)
+        .sort((a, b) => b.bajada - a.bajada);
     },
   };
 }

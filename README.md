@@ -151,6 +151,38 @@ entran 10 ofertas nuevas por modelo y revisión (las más baratas). Las que entr
 `descubierta = true` y la app las marca "Nueva oferta encontrada". El interruptor "Buscar vendedores
 nuevos de este modelo" (`seguir_modelo`) apaga todo esto para ese modelo.
 
+### 3b. Censo de ofertas (pestaña "Ofertas")
+
+Responde otra pregunta: no "¿cuánto vale este producto?", sino **"¿qué bajó de verdad en las
+áreas que me interesan?"**. Cada usuario elige áreas (Homecenter → Energía solar, Éxito →
+Tecnología…). La función `censo` recorre **completas** las áreas que alguien eligió, una vez al día,
+en tandas cada 5 minutos (máx. ~40 páginas y 100 s por tanda, para respetar los límites de las
+Edge Functions y no golpear a las tiendas).
+
+**¿Contra qué se mide "bajó"?** (`_shared/censo.ts`, función pura `actualizar()`):
+
+| Base | Qué compara | Para qué sirve |
+|---|---|---|
+| **Mediana 30 d** (por defecto) | precio de hoy vs. mediana de los 30 días anteriores, sin contar hoy | detecta rebajas reales; no se deja engañar por "subo el precio una semana y luego lo rebajo" |
+| Precio anterior | vs. el último precio distinto | ver qué cambió hoy |
+| Tachado | vs. el precio normal que declara la tienda | funciona desde el día 1, pero a veces está inflado |
+
+Con menos de 7 días de historia, la mediana usa el tachado (la app lo marca "poca historia").
+Las pruebas incluyen justo el caso del precio inflado: contra el tachado parece 20 % de descuento,
+contra la mediana en realidad subió.
+
+**Volumen y disco** (Supabase Free = 500 MB compartidos): Homecenter completo son ~50–80 mil
+productos (~2.000 páginas de 40). Guardar un precio por producto por día llenaría el disco en meses,
+así que:
+- `censo_productos`: **una fila por producto**, con los últimos 30 precios diarios en un arreglo
+  (`precios_30d`); de ahí sale la mediana sin consultar historia.
+- `censo_precios`: historia larga **solo cuando el precio cambia**.
+- Solo se recorren las áreas que alguien eligió (`censo_intereses`).
+
+Topes de las tiendas: Homecenter corta en 9.900 resultados por categoría y VTEX en 2.500, por eso
+las áreas grandes se definen por subcategorías (`AREAS` en `censo.ts`). Si una categoría toca el
+tope, el área queda marcada `truncada`.
+
 ## 4. Precio final
 
 Decisión: **el precio que se muestra es siempre el precio final**.
@@ -217,7 +249,7 @@ Sin variables de entorno la app abre en **modo demo**: usa respuestas grabadas d
 ### Pruebas del backend
 
 ```bash
-deno test --allow-read supabase/functions/_shared     # 17 pruebas: conectores, agrupación, seguir el modelo y token ML (sin internet)
+deno test --allow-read supabase/functions/_shared     # 29 pruebas: conectores (ML, Éxito, Homecenter), agrupación, seguir el modelo, token ML y censo (sin internet)
 ```
 
 Para la prueba de RLS en un PostgreSQL local:
@@ -226,6 +258,7 @@ Para la prueba de RLS en un PostgreSQL local:
 psql -d prueba -f supabase/tests/stub_supabase.sql
 sed '/create extension/d' supabase/migrations/*.sql | psql -d prueba
 psql -d prueba -f supabase/tests/prueba_rls.sql
+psql -d prueba -f supabase/tests/prueba_censo.sql   # catálogo legible, intereses privados, base de comparación
 ```
 
 ## 8. Despliegue
@@ -253,6 +286,23 @@ de MercadoLibre es de un solo uso, así que se guarda con `update ... where refr
 si dos funciones renuevan a la vez, la segunda relee el que guardó la primera. La primera cuenta que
 autoriza queda fijada (otra cuenta recibe 409).
 
+**Censo (2026-11-21):** migración `20261121000500_censo.sql` + función `censo` (`--no-verify-jwt`,
+la llama pg_cron con el secreto). La primera llamada sincroniza la tabla `censo_areas`.
+
+### APK de Android
+
+La APK es la misma app web envuelta con Capacitor (`app/capacitor.config.ts`, carpeta `app/android`).
+Se compila sola en **GitHub Actions** (`.github/workflows/apk.yml`) en cada push que toque la app:
+pestaña *Actions* → la ejecución → *Artifacts* → `rastreaycompra-apk` (un .zip con la APK).
+
+- Está firmada con una llave de prueba fija (`app/android/app/rastreaycompra-debug.keystore`), así
+  cada APK nueva se instala encima de la anterior sin desinstalar. Para publicar en Play Store se
+  necesita otra llave, privada, guardada como secreto de GitHub (no en el repo).
+- En la APK no hay service worker (`CAPACITOR=1` lo apaga en `vite.config.ts`): los archivos ya van
+  dentro de la app.
+- Compilar a mano: `cd app && npm run build:apk && cd android && ./gradlew assembleDebug`
+  (requiere Android SDK y Java 21).
+
 Para desplegar en otro proyecto:
 
 ```bash
@@ -261,6 +311,7 @@ supabase db push
 supabase functions deploy buscar
 supabase functions deploy revisar-precios --no-verify-jwt
 supabase functions deploy ml-autorizar --no-verify-jwt
+supabase functions deploy censo --no-verify-jwt
 ```
 
 y una sola vez en el SQL Editor:
@@ -276,8 +327,9 @@ select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cron
 |---|---|---|
 | 1 | MercadoLibre + Éxito (VTEX), búsqueda agrupada por modelo, filtro nueva/usada, precio objetivo, historial cada 6 h | **este PR** |
 | 2 | Más tiendas VTEX (Carulla, Jumbo, Metro…), alertas push (objetivo, bajada > 5 %, stock), envío por código postal | siguiente |
-| 3 | Scraping con navegador para Alkosto, Ktronix, Homecenter, Amazon, AliExpress (precio final con importación) | — |
-| 4 | APK con Capacitor | — |
+| 2b | Homecenter (API propia, sin scraping), censo de ofertas por áreas, APK con Capacitor | **hecho** |
+| 3 | Scraping con navegador para Alkosto, Ktronix, Amazon, AliExpress (precio final con importación) | — |
+| 4 | APK firmada para Play Store | — |
 
 Agregar una tienda VTEX es una línea en `supabase/functions/_shared/conectores.ts`:
 `crearConectorVtex({ id: "carulla", nombre: "Carulla", dominio: "www.carulla.com" })`.

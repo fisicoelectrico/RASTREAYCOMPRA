@@ -8,6 +8,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // En la APK (Capacitor) los archivos ya vienen dentro de la app: sin service worker,
+      // así una versión nueva de la APK nunca queda tapada por una caché vieja.
+      disable: process.env.CAPACITOR === "1",
       registerType: "autoUpdate",
       includeAssets: ["icono.svg"],
       manifest: {

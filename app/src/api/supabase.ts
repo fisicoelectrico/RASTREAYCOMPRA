@@ -1,6 +1,6 @@
 // Implementación real: habla con Supabase (tablas con RLS + Edge Functions).
 import { createClient } from "@supabase/supabase-js";
-import type { Api, Vigilado } from "./tipos.ts";
+import { type Api, type BaseCenso, TIENDA_DE_CONECTOR, type Vigilado } from "./tipos.ts";
 
 export function crearApiSupabase(url: string, anonKey: string): Api {
   const sb = createClient(url, anonKey);
@@ -148,6 +148,52 @@ export function crearApiSupabase(url: string, anonKey: string): Api {
       const { data, error } = await sb.functions.invoke("revisar-precios", { body: { origen: "app" } });
       falla(error);
       return data;
+    },
+
+    async areasCenso() {
+      const [{ data: areas, error }, { data: mias }] = await Promise.all([
+        sb.from("censo_areas").select("id, conector, tienda, nombre, n_productos, truncada, ultima_pasada").order("orden"),
+        sb.from("censo_intereses").select("area_id"),
+      ]);
+      falla(error);
+      const elegidas = new Set((mias ?? []).map((m) => m.area_id));
+      return (areas ?? []).map((a) => ({
+        id: a.id,
+        conector: a.conector,
+        tienda: a.tienda,
+        nombre: a.nombre,
+        nProductos: a.n_productos,
+        truncada: a.truncada,
+        ultimaPasada: a.ultima_pasada,
+        interesa: elegidas.has(a.id),
+      }));
+    },
+
+    async cambiarInteres(areaId, interesa) {
+      const r = interesa
+        ? await sb.from("censo_intereses").upsert({ area_id: areaId }, { onConflict: "user_id,area_id", ignoreDuplicates: true })
+        : await sb.from("censo_intereses").delete().eq("area_id", areaId);
+      falla(r.error);
+    },
+
+    async ofertasCenso({ areas, umbral, base }) {
+      if (!areas.length) return [];
+      const { data, error } = await sb.rpc("ofertas_censo", { p_areas: areas, p_umbral: umbral, p_base: base, p_limite: 200 });
+      falla(error);
+      return (data ?? []).map((o: Record<string, unknown>) => ({
+        id: o.id as number,
+        tienda: TIENDA_DE_CONECTOR[o.conector as string] ?? (o.conector as string),
+        titulo: o.titulo as string,
+        marca: o.marca as string | null,
+        url: o.url as string,
+        imagen: o.imagen as string | null,
+        areas: o.areas as string[],
+        precio: o.precio as number,
+        referencia: o.referencia as number,
+        base: o.base as BaseCenso,
+        bajada: Number(o.bajada),
+        precios30d: (o.precios_30d as number[]) ?? [],
+      }));
     },
   };
 }

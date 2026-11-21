@@ -4,6 +4,7 @@ import type { Conector } from "./tipos.ts";
 import { crearConectorML } from "./mercadolibre.ts";
 import { type Almacen, proveedorTokenML } from "./ml_token.ts";
 import { crearConectorVtex, EXITO } from "./vtex.ts";
+import { crearConectorHomecenter } from "./homecenter.ts";
 
 /** `admin` es un cliente con service role: lo necesita el token de MercadoLibre. */
 export function conectoresActivos(admin: SupabaseClient): Conector[] {
@@ -11,7 +12,7 @@ export function conectoresActivos(admin: SupabaseClient): Conector[] {
     clientId: Deno.env.get("ML_CLIENT_ID") ?? undefined,
     clientSecret: Deno.env.get("ML_CLIENT_SECRET") ?? undefined,
   });
-  return [crearConectorML({ token }), crearConectorVtex(EXITO)];
+  return [crearConectorML({ token }), crearConectorVtex(EXITO), crearConectorHomecenter()];
 }
 
 /** Credenciales de MercadoLibre en la tabla ml_credenciales (una sola fila, solo service role). */
