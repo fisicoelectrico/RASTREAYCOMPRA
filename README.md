@@ -313,7 +313,7 @@ Solo hay que instalar una APK nueva cuando cambia algo de `twa/` (ícono, colore
   cambias la llave (por ejemplo para Play Store), actualiza la huella:
   `keytool -list -v -keystore <llave> | grep SHA256`.
 - **Notificaciones:** las Web Push de la PWA las entrega Chrome, y la APK las "delega" para que
-  salgan con el nombre e ícono de RastreaYCompra (`DelegationService`).
+  salgan con el nombre e ícono de RastreaYCompra (`DelegationService` de androidbrowserhelper, declarado en el manifest).
 - **Requisito:** Chrome (u otro navegador compatible) en el celular. Si no lo hay, abre en un WebView.
 - **Dominio:** por defecto `rastreaycompra.pages.dev`. Si Cloudflare asigna otro, crea la variable
   del repositorio `TWA_HOST` (Settings → Secrets and variables → Actions → Variables) y recompila la APK.

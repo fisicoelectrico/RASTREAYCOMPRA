@@ -61,8 +61,10 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Chrome "delega" aquí las notificaciones Web Push: salen con el nombre e ícono de la app,
+             y en Android 13+ el permiso se pide como permiso de la app (NotificationPermissionRequestActivity). -->
         <service
-            android:name=".DelegationService"
+            android:name="com.google.androidbrowserhelper.trusted.DelegationService"
             android:enabled="true"
             android:exported="true">
             <meta-data android:name="android.support.customtabs.trusted.SMALL_ICON" android:resource="@drawable/ic_notificacion" />
