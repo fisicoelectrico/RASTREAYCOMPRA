@@ -1,12 +1,12 @@
-# Compila la APK de Android en cada push que toque la app y la deja para descargar
-# en la pestaña Actions → la ejecución → "Artifacts" → rastreaycompra-apk.
+# Compila la APK (TWA) y la deja para descargar en Actions → la ejecución → Artifacts → rastreaycompra-apk.
+# Solo corre cuando cambia la parte nativa (carpeta twa/). Los cambios de interfaz NO necesitan APK
+# nueva: llegan solos por la web (ver web.yml).
 name: APK Android
 
 on:
   push:
     paths:
-      - "app/**"
-      - "supabase/functions/_shared/**"
+      - "twa/**"
       - ".github/workflows/apk.yml"
   workflow_dispatch:
 
@@ -16,15 +16,9 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: app
+        working-directory: twa
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
 
       - uses: actions/setup-java@v4
         with:
@@ -32,21 +26,15 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Instalar dependencias
-        run: npm ci
-
-      - name: Construir la web y copiarla a Android
-        run: npm run build:apk
-
+      # Dominio de la PWA: variable TWA_HOST del repositorio, o rastreaycompra.pages.dev por defecto.
       - name: Compilar APK
-        working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon -PtwaHost="${{ vars.TWA_HOST || 'rastreaycompra.pages.dev' }}"
 
       - name: Renombrar
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk "RastreaYCompra-${{ github.run_number }}.apk"
+        run: cp app/build/outputs/apk/debug/app-debug.apk "RastreaYCompra-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
           name: rastreaycompra-apk
-          path: app/RastreaYCompra-*.apk
+          path: twa/RastreaYCompra-*.apk
           retention-days: 30

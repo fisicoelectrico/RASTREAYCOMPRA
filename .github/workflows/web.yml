@@ -1,0 +1,61 @@
+# Publica la PWA en Cloudflare Pages cada vez que cambia la app en la rama por defecto.
+# El celular la recibe sola: la APK (TWA) abre esta web, y el service worker baja la versión nueva
+# y recarga la app al abrirla. No hay que reinstalar nada.
+#
+# Necesita dos secretos del repositorio (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   token con permiso "Cloudflare Pages: Edit"
+#   CLOUDFLARE_ACCOUNT_ID  el Account ID de la cuenta de Cloudflare
+name: Web (PWA)
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "supabase/functions/_shared/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROYECTO: rastreaycompra
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Construir
+        run: npm run build
+
+      # Solo la rama por defecto llega al celular. En otras ramas basta con que compile.
+      - name: Publicar en Cloudflare Pages
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Faltan los secretos CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID: no se publicó."
+            exit 0
+          fi
+          # La primera vez crea el proyecto (rastreaycompra.pages.dev). Si ya existe, sigue.
+          npx --yes wrangler@4 pages project list | grep -qw "$PROYECTO" \
+            || npx --yes wrangler@4 pages project create "$PROYECTO" --production-branch=produccion
+          npx --yes wrangler@4 pages deploy dist --project-name="$PROYECTO" --branch=produccion --commit-dirty=true

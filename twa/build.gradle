@@ -1,0 +1,23 @@
+// Proyecto Android mínimo: una "Trusted Web Activity" (TWA).
+// La APK no lleva la interfaz adentro: abre la PWA publicada en la web con el motor de Chrome,
+// a pantalla completa y sin barra de direcciones. Por eso los cambios de interfaz llegan solos.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

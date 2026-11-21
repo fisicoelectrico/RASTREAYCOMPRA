@@ -289,19 +289,38 @@ autoriza queda fijada (otra cuenta recibe 409).
 **Censo (2026-11-21):** migración `20261121000500_censo.sql` + función `censo` (`--no-verify-jwt`,
 la llama pg_cron con el secreto). La primera llamada sincroniza la tabla `censo_areas`.
 
-### APK de Android
+### APK de Android (TWA) y actualizaciones sin reinstalar
 
-La APK es la misma app web envuelta con Capacitor (`app/capacitor.config.ts`, carpeta `app/android`).
-Se compila sola en **GitHub Actions** (`.github/workflows/apk.yml`) en cada push que toque la app:
-pestaña *Actions* → la ejecución → *Artifacts* → `rastreaycompra-apk` (un .zip con la APK).
+La APK es una **Trusted Web Activity** (carpeta `twa/`): no lleva la interfaz adentro. Al abrirla,
+Chrome carga la PWA publicada en `https://rastreaycompra.pages.dev` a pantalla completa, sin barra de
+direcciones. Por eso **los cambios de interfaz llegan solos**:
 
-- Está firmada con una llave de prueba fija (`app/android/app/rastreaycompra-debug.keystore`), así
-  cada APK nueva se instala encima de la anterior sin desinstalar. Para publicar en Play Store se
-  necesita otra llave, privada, guardada como secreto de GitHub (no en el repo).
-- En la APK no hay service worker (`CAPACITOR=1` lo apaga en `vite.config.ts`): los archivos ya van
-  dentro de la app.
-- Compilar a mano: `cd app && npm run build:apk && cd android && ./gradlew assembleDebug`
-  (requiere Android SDK y Java 21).
+1. Un push a la rama por defecto que toque `app/` dispara `.github/workflows/web.yml`, que construye
+   la PWA y la publica en Cloudflare Pages (gratis).
+2. Al abrir la app, el service worker (vite-plugin-pwa, `registerType: "autoUpdate"`) ve que hay
+   versión nueva, la descarga y recarga la pantalla.
+3. Sin conexión, el service worker sirve la última versión guardada (los precios necesitan red, igual
+   que antes).
+
+Solo hay que instalar una APK nueva cuando cambia algo de `twa/` (ícono, colores, dominio, permisos).
+`.github/workflows/apk.yml` corre únicamente en ese caso: *Actions* → la ejecución → *Artifacts* →
+`rastreaycompra-apk`.
+
+- **Llave:** la APK se firma con la llave de prueba fija `twa/app/rastreaycompra-debug.keystore`
+  (la misma de la antigua APK de Capacitor, mismo paquete `com.rastreaycompra.app`), así se instala
+  encima sin desinstalar. Su huella SHA-256 va en `app/public/.well-known/assetlinks.json`: así
+  Chrome comprueba que la web y la APK son del mismo dueño y oculta la barra de direcciones. Si
+  cambias la llave (por ejemplo para Play Store), actualiza la huella:
+  `keytool -list -v -keystore <llave> | grep SHA256`.
+- **Notificaciones:** las Web Push de la PWA las entrega Chrome, y la APK las "delega" para que
+  salgan con el nombre e ícono de RastreaYCompra (`DelegationService`).
+- **Requisito:** Chrome (u otro navegador compatible) en el celular. Si no lo hay, abre en un WebView.
+- **Dominio:** por defecto `rastreaycompra.pages.dev`. Si Cloudflare asigna otro, crea la variable
+  del repositorio `TWA_HOST` (Settings → Secrets and variables → Actions → Variables) y recompila la APK.
+- **Secretos para publicar la web:** `CLOUDFLARE_API_TOKEN` (permiso *Cloudflare Pages: Edit*) y
+  `CLOUDFLARE_ACCOUNT_ID`. Sin ellos, web.yml compila pero no publica.
+- Compilar a mano: `cd twa && ./gradlew assembleDebug -PtwaHost=rastreaycompra.pages.dev`
+  (requiere Android SDK y Java 17+).
 
 Para desplegar en otro proyecto:
 
@@ -327,7 +346,7 @@ select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cron
 |---|---|---|
 | 1 | MercadoLibre + Éxito (VTEX), búsqueda agrupada por modelo, filtro nueva/usada, precio objetivo, historial cada 6 h | **este PR** |
 | 2 | Más tiendas VTEX (Carulla, Jumbo, Metro…), alertas push (objetivo, bajada > 5 %, stock), envío por código postal | siguiente |
-| 2b | Homecenter (API propia, sin scraping), censo de ofertas por áreas, APK con Capacitor | **hecho** |
+| 2b | Homecenter (API propia, sin scraping), censo de ofertas por áreas, APK con Capacitor (luego TWA) | **hecho** |
 | 3 | Scraping con navegador para Alkosto, Ktronix, Amazon, AliExpress (precio final con importación) | — |
 | 4 | APK firmada para Play Store | — |
 

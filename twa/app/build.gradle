@@ -1,0 +1,56 @@
+apply plugin: 'com.android.application'
+
+// En GitHub Actions cada compilación sube el número: Android solo acepta actualizar hacia arriba.
+// (La APK de Capacitor usaba el mismo contador, así que la TWA se instala encima sin desinstalar.)
+def numeroCompilacion = (System.getenv("GITHUB_RUN_NUMBER") ?: "1") as Integer
+
+// Dominio donde vive la PWA. Se puede cambiar sin tocar código: ./gradlew assembleDebug -PtwaHost=otro.dominio
+def host = (project.findProperty("twaHost") ?: "rastreaycompra.pages.dev").toString()
+
+android {
+    namespace = "com.rastreaycompra.app"
+    compileSdk = 36
+    defaultConfig {
+        applicationId "com.rastreaycompra.app"
+        minSdkVersion 24
+        targetSdkVersion 36
+        versionCode numeroCompilacion
+        versionName "0.3.${numeroCompilacion}"
+
+        manifestPlaceholders = [hostName: host]
+        resValue "string", "launchUrl", "https://${host}/"
+        resValue "string", "providerAuthority", "com.rastreaycompra.app.fileprovider"
+        // Chrome compara esta declaración con https://<host>/.well-known/assetlinks.json:
+        // si coinciden (mismo paquete y misma huella de la llave), oculta la barra de direcciones.
+        resValue "string", "assetStatements",
+            '[{\\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], ' +
+            '\\"target\\": {\\"namespace\\": \\"web\\", \\"site\\": \\"https://' + host + '\\"}}]'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    // Llave fija para la APK de prueba (no secreta: solo sirve para instalar a mano).
+    // Su huella SHA-256 está en app/public/.well-known/assetlinks.json; si cambias la llave, cambia la huella.
+    // Para Play Store se necesita otra llave, privada (ver README).
+    signingConfigs {
+        debug {
+            storeFile file("rastreaycompra-debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
+}
