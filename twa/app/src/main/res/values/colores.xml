@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Los mismos colores del manifest de la PWA (theme_color y background_color). -->
+    <color name="colorPrimary">#0E4F5F</color>
+    <color name="colorFondo">#F4F7F9</color>
+</resources>
